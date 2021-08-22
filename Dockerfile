@@ -30,3 +30,20 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 
 RUN pip3 install numpy
 ENV LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
+
+# Install Livebook escript
+
+RUN mix local.rebar --force && \
+    mix escript.install --force hex livebook && \
+    echo 'PATH="${PATH}:/root/.mix/escripts"' >> ~/.bashrc
+
+# Add env vars to enable CUDA support in EXLA
+ENV EXLA_FLAGS=--config=cuda
+
+# Copy our DLE env mix project to the container
+COPY dle_env /dle_env
+WORKDIR /dle_env
+
+# Build out our Mix project
+RUN mix deps.get && \
+    mix compile
