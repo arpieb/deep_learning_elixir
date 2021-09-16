@@ -15,3 +15,11 @@ Mix.install([
   {:scidata, "~> 0.1.1"}
 ])
 ```
+
+## Set backend target
+
+Configure which compute backend we want to use (`:cuda` or `:host`)
+
+```elixir
+Application.put_env(:exla, :clients, default: [platform: :cuda])
+```
