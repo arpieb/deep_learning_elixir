@@ -1,0 +1,17 @@
+<!-- livebook:{"persist_outputs":true} -->
+
+# Setup
+
+## Install deps
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.1.0-dev", github: "elixir-nx/nx", sparse: "nx", override: true},
+  {:exla, "~> 0.1.0-dev", github: "elixir-nx/nx", sparse: "exla", override: true},
+  {:vega_lite, "~> 0.1.0"},
+  {:kino, "~> 0.2.0"},
+  {:axon, "~> 0.1.0-dev", github: "elixir-nx/axon", branch: "main"},
+  {:explorer, "~> 0.1.0-dev", github: "elixir-nx/explorer", branch: "main"},
+  {:scidata, "~> 0.1.1"}
+])
+```
