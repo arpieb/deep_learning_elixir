@@ -2,128 +2,73 @@
 
 # IMDB Reviews Classification - Conv1D
 
-## Load deps
+## Introduction
+
+The **Internet Movie Database (IMDB)** contains a wealth of data on the movies we all know and love (or hate; you do you).  One of the most common ML tasks the dataset is used for involves natural language processing (NLP) to see if we can properly predict moviegoers' sentiments towards a flick.  To this end, Stanford AI Labs has compiled [50k reviews](https://ai.stanford.edu/~amaas/data/sentiment/) and labeled them as positive or negative for the NLP community to tinker with.
+
+For fun (yes, FUN), we're going to tackle this challenge using a convolutional network powered by word vectors.  We'll get to see how **Elixir** is well suited to the task of processing textual data, and how **Nx** complements this with performant numerical computation.  Finally we'll actually train and test a DL model using the **Axon** deep learning framework powered by the EXLA backend which supports CPU, GPU, and yes TPU compute.
+
+Oh, and for the very observant observer - you might have noticed this isn't Jupyter.  Nope, we're going to do all this in **Livebook Server**, the Elixir ecosystem's crash-tolerant, concurrent, and distributed notebook server.
+
+And this is not a "notebook."
+
+It is a **Livebook**.
+
+## Setup
+
+Similar to `pip` in Python, as of Elixir 1.12 we can install packages on-the-fly instead of having to build a complete Mix project around our notebook (not that you couldn't do that as well).
+
+Here we install our core ML ecosystem (**Nx**, **EXLA**, **Axon**), a dataset library (**Scidata**), stub for a native NLP toolkit (**NLTEx**), and visualization tools (**Kino**, **VegaLite**).
 
 <!-- livebook:{"disable_formatting":true} -->
 
 ```elixir
 Mix.install(
   [
+    # Core ecosystem components
     {:nx, "~> 0.1.0-dev", github: "elixir-nx/nx", sparse: "nx", override: true},
     {:exla, "~> 0.1.0-dev", github: "elixir-nx/nx", sparse: "exla", override: true},
-    {:axon, "~> 0.1.0-dev", github: "elixir-nx/axon", branch: "main"},
+    {:axon, "~> 0.1.0-dev", github: "elixir-nx/axon", branch: "main", override: true},
+
+    # Dataset package
     {:scidata, "~> 0.1.2"},
-    {:nltex, "~> 0.1.0-dev", github: "arpieb/nltex", branch: "master", override: true}
-  ] , force: true
+
+    # Natural Language Toolkit for Elixir
+    {:nltex, "~> 0.1.0-dev", github: "arpieb/nltex", branch: "master", override: true},
+
+    # Visualizations
+    {:kino, "~> 0.3.0"},
+    {:vega_lite, "~> 0.1.0"},
+  ] #, force: true
 )
 ```
 
 ```output
-* Getting nx (https://github.com/elixir-nx/nx.git)
-remote: Enumerating objects: 10104, done.        
-remote: Counting objects: 100% (2500/2500), done.        
-remote: Compressing objects: 100% (1162/1162), done.        
-remote: Total 10104 (delta 1530), reused 2126 (delta 1251), pack-reused 7604        
-Receiving objects: 100% (10104/10104), 2.81 MiB | 6.09 MiB/s, done.
-Resolving deltas: 100% (6587/6587), done.
-origin/HEAD set to main
-* Getting exla (https://github.com/elixir-nx/nx.git)
-remote: Enumerating objects: 10104, done.        
-remote: Counting objects: 100% (2500/2500), done.        
-remote: Compressing objects: 100% (1162/1162), done.        
-remote: Total 10104 (delta 1530), reused 2126 (delta 1251), pack-reused 7604        
-Receiving objects: 100% (10104/10104), 2.81 MiB | 6.14 MiB/s, done.
-Resolving deltas: 100% (6587/6587), done.
-origin/HEAD set to main
-* Getting axon (https://github.com/elixir-nx/axon.git - origin/main)
-remote: Enumerating objects: 1727, done.        
-remote: Counting objects: 100% (903/903), done.        
-remote: Compressing objects: 100% (479/479), done.        
-remote: Total 1727 (delta 632), reused 640 (delta 414), pack-reused 824        
-Receiving objects: 100% (1727/1727), 3.19 MiB | 5.09 MiB/s, done.
-Resolving deltas: 100% (1090/1090), done.
-* Getting nltex (https://github.com/arpieb/nltex.git - origin/master)
-remote: Enumerating objects: 211, done.        
-remote: Counting objects: 100% (211/211), done.        
-remote: Compressing objects: 100% (138/138), done.        
-remote: Total 211 (delta 85), reused 177 (delta 53), pack-reused 0        
-Receiving objects: 100% (211/211), 214.21 KiB | 2.41 MiB/s, done.
-Resolving deltas: 100% (85/85), done.
-Resolving Hex dependencies...
-Dependency resolution completed:
-New:
-  elixir_make 0.6.2
-  scidata 0.1.2
-  table_rex 3.1.1
-  xla 0.2.0
-* Getting scidata (Hex package)
-* Getting table_rex (Hex package)
-* Getting xla (Hex package)
-* Getting elixir_make (Hex package)
-==> scidata
-Compiling 6 files (.ex)
-Generated scidata app
-==> nx
-Compiling 20 files (.ex)
-Generated nx app
-==> elixir_make
-Compiling 1 file (.ex)
-Generated elixir_make app
-==> xla
-Compiling 2 files (.ex)
-Generated xla app
-==> exla
-Unpacking /home/rbates/.cache/xla/0.2.0/cache/download/xla_extension-x86_64-linux-cuda111.tar.gz into /home/rbates/.cache/mix/installs/elixir-1.12.2-erts-12.0.3/872f851f9010b4d68f6b9afa4ab8bc5c/deps/exla/exla/cache
-mkdir -p /home/rbates/.cache/mix/installs/elixir-1.12.2-erts-12.0.3/872f851f9010b4d68f6b9afa4ab8bc5c/_build/dev/lib/exla/priv
-ln -sf /home/rbates/.cache/mix/installs/elixir-1.12.2-erts-12.0.3/872f851f9010b4d68f6b9afa4ab8bc5c/deps/exla/exla/cache/xla_extension/lib /home/rbates/.cache/mix/installs/elixir-1.12.2-erts-12.0.3/872f851f9010b4d68f6b9afa4ab8bc5c/_build/dev/lib/exla/priv/lib
-g++ -fPIC -I/usr/lib/erlang/erts-12.0.3/include -isystem cache/xla_extension/include -O3 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-comment -shared -std=c++14 c_src/exla/exla.cc c_src/exla/exla_nif_util.cc c_src/exla/exla_client.cc -o /home/rbates/.cache/mix/installs/elixir-1.12.2-erts-12.0.3/872f851f9010b4d68f6b9afa4ab8bc5c/_build/dev/lib/exla/priv/libexla.so -L/home/rbates/.cache/mix/installs/elixir-1.12.2-erts-12.0.3/872f851f9010b4d68f6b9afa4ab8bc5c/_build/dev/lib/exla/priv/lib -lxla_extension -Wl,-rpath,'$ORIGIN/lib'
-In file included from c_src/exla/exla.cc:5:
-c_src/exla/exla_log_sink.h: In member function ‘virtual void exla::ExlaLogSink::Send(const tensorflow::TFLogEntry&)’:
-c_src/exla/exla_log_sink.h:74:14: warning: ‘msg’ may be used uninitialized in this function [-Wmaybe-uninitialized]
-   74 |     enif_send(env_, &sink_pid_, NULL, msg);
-      |     ~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-c_src/exla/exla_client.cc: In function ‘tensorflow::StatusOr<std::vector<exla::ExlaBuffer*> > exla::UnpackRunArguments(ErlNifEnv*, ERL_NIF_TERM, exla::ExlaClient*, int)’:
-c_src/exla/exla_client.cc:89:19: warning: redundant move in return statement [-Wredundant-move]
-   89 |   return std::move(arg_buffers);
-      |          ~~~~~~~~~^~~~~~~~~~~~~
-c_src/exla/exla_client.cc:89:19: note: remove ‘std::move’ call
-In file included from c_src/exla/exla_client.cc:1:
-c_src/exla/exla_client.h: In constructor ‘exla::ExlaExecutable::ExlaExecutable(std::unique_ptr<xla::PjRtExecutable>, absl::lts_20210324::optional<std::__cxx11::basic_string<char> >, exla::ExlaClient*)’:
-c_src/exla/exla_client.h:67:31: warning: ‘exla::ExlaExecutable::fingerprint_’ will be initialized after [-Wreorder]
-   67 |   absl::optional<std::string> fingerprint_;
-      |                               ^~~~~~~~~~~~
-c_src/exla/exla_client.h:66:15: warning:   ‘exla::ExlaClient* exla::ExlaExecutable::client_’ [-Wreorder]
-   66 |   ExlaClient* client_;
-      |               ^~~~~~~
-c_src/exla/exla_client.cc:109:1: warning:   when initialized here [-Wreorder]
-  109 | ExlaExecutable::ExlaExecutable(std::unique_ptr<xla::PjRtExecutable> executable,
-      | ^~~~~~~~~~~~~~
-Compiling 15 files (.ex)
-Generated exla app
-==> nltex
-Compiling 8 files (.ex)
-Generated nltex app
-==> table_rex
-Compiling 7 files (.ex)
-Generated table_rex app
-==> axon
-Compiling 21 files (.ex)
-Generated axon app
-```
-
-```output
 :ok
 ```
+
+Now we need to set some livebook-wide config settings that would otherwise be part of a Mix project configuration.
 
 ```elixir
+# Compile computation graphs to the CPU
 Application.put_env(:exla, :clients, default: [platform: :host])
+
+# Macro initialization for Axon
+require Axon
+
+# Short name for using VegaLite
+alias VegaLite, as: Vl
 ```
 
 ```output
-:ok
+VegaLite
 ```
 
 ## Retrieve IMDB movie reviews
+
+Now we need to load the **IMDB Reviews** dataset provided by Stanford AI to get our train/test data.  We're going to use the **Scidata** package to pull in the labeled review text (labels are `0` for negative reviews, `1` for positive reviews).
+
+_Please hold..._
 
 ```elixir
 reviews = Scidata.IMDBReviews.download()
@@ -189,6 +134,7 @@ reviews = Scidata.IMDBReviews.download()
 ```
 
 ```elixir
+# Sanity check to make sure we have the same number of reviews and labels
 IO.puts(length(reviews.review))
 IO.puts(length(reviews.sentiment))
 ```
@@ -204,11 +150,23 @@ IO.puts(length(reviews.sentiment))
 
 ## Retrieve Stanford NLP's GloVe word vectors
 
+Good ol' Stanford AI Labs... They are also home to one of the leading NLP research organizations, and as such have nice collections of word vectors we can leverage for our model.
+
+Think of word vectors as lists of values assigned to an English word that 1. uniquely identify that word, yet 2. allow it to be mathematically related to other words based on how it is generally used in context.  This is the secret sawse that will allow us to train a network quickly to recognize "patterns of meaning" in small snippets of reviews.
+
+We're going to pull in one of their smaller [Global Vectors for Word Representation (GloVe)](https://nlp.stanford.edu/projects/glove/) models, trained on 6B tokens from Wikipedia in 2014, with 50-dimension vectors per word.
+
+(Note there's some crude local caching going on here; the particular server in question doesn't honor the `If-Modified-Since` HTTP request header and _always_ returns the file, so...)
+
+_If not already cached - please hold..._
+
 ```elixir
 # Quick-n-dirty caching since apparently Stanford's data server doesn't honor the 
 # "If-Modified-Since" request header leveraged by Scidata.
+glove_cache_file = "/tmp/glove_6b_50d.bin"
+
 read_result =
-  File.open("/data/rbates/glove_6b_50d.bin", [:read, :binary], fn ifs ->
+  File.open(glove_cache_file, [:read, :binary], fn ifs ->
     IO.binread(ifs, :all)
     |> :erlang.binary_to_term()
   end)
@@ -221,7 +179,7 @@ w2v =
     {:error, _} ->
       data = NLTEx.WordVectors.GloVe.download(:glove_6b, 50)
 
-      File.open!("/data/rbates/glove_6b_50d.bin", [:write, :binary], fn ofs ->
+      File.open!(glove_cache_file, [:write, :binary], fn ofs ->
         IO.binwrite(ofs, data |> :erlang.term_to_binary())
       end)
   end
@@ -429,6 +387,7 @@ w2v =
 ```
 
 ```elixir
+# Verify we have 400k tokens in our word vector vocabulary
 w2v.wordvecs |> Map.keys() |> length()
 ```
 
@@ -438,14 +397,26 @@ w2v.wordvecs |> Map.keys() |> length()
 
 ## Prepare review text data
 
+Now that we have all the raw materials, we need to prep them for use in a convolutional neural network.  This means we have to:
+
+* Downcase all text
+* Split each review into "tokens" using the age-old whitespace approach ('cause it's quick-n-dirty, and in the end doesn't make that much difference)
+* Convert each list of tokens into a list of vectors
+* Pad and aggregate these vectors into a single rank 3 tensor for use in our model
+
 <!-- livebook:{"disable_formatting":true} -->
 
 ```elixir
 defmodule PreprocReviews do
+  # Define the default Nx backend compiler to use for `defn` numeric functions
   @default_defn_compiler EXLA
   
+  # Import the macros for defining numeric functions
   import Nx.Defn
 
+  @doc ~S"""
+  Preprocess reviews for Conv1D model consumption
+  """
   def preproc_reviews(reviews, w2v) do
     reviews
     |> Stream.map(&String.downcase/1)
@@ -463,6 +434,7 @@ defmodule PreprocReviews do
     |> Nx.stack()
     end
 
+  # Break out tensor-based numeric computation for backend compilation
   defnp nx_proc(t, opts \\ []) do
     t
     |> Nx.pad(0.0, [{opts[:lead], opts[:trail], 0}, {0, 0, 0}])
@@ -471,10 +443,9 @@ defmodule PreprocReviews do
 
 end
 
-num_samples = length(reviews.review)
 vec_reviews =
   reviews.review
-  |> Stream.take(num_samples)
+  # |> Stream.take(100)
   |> PreprocReviews.preproc_reviews(w2v)
 ```
 
@@ -494,14 +465,19 @@ vec_reviews =
 
 ## Prep sentiment labels
 
+Similarly, we need to preprocess our labels to get them into class vectors.
+
+(Sure, we could have made this a binary labeling example, but where's the fun in that?)
+
 ```elixir
 labels =
   reviews.sentiment
-  |> Enum.take(num_samples)
+  |> Enum.take(vec_reviews |> Nx.shape() |> elem(0))
   |> Nx.tensor(type: {:f, 32})
   |> Nx.new_axis(-1)
   |> Nx.equal(Nx.iota({2}))
 
+# Sanity check, confirm we have equal numbers of labels per the dataset reference
 Nx.sum(labels, axes: [0])
 ```
 
@@ -512,21 +488,38 @@ Nx.sum(labels, axes: [0])
 >
 ```
 
-<!-- livebook:{"branch_parent_index":4} -->
+<!-- livebook:{"branch_parent_index":5} -->
 
 ## Construct Axon binary classification model and train it!
 
+^^ See that _branch from "Prep sentiment labels"_ above?  That means we've forked a new process in Elixir, so if anything goes sideways in this section it can't take down the main livebook process, yet it inherits the environment from the final state in the named section.
+
+Recovery is as simple as re-evaluating this section to pick up the parent process' state and do its thing.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Define model
+
+Here is where the DL magic happens!  We're going to construct a 1D convolutional network (Conv1D for short) where the first dimension is our words (the first 32 from a review) and the "depth" of each feature is 50 (the size of the word vectors).
+
+You might ask why we didn't just use a Conv2D model here?  That kind of model is optimized for 2D spatial patterns such as images, and while it _could_ be used it's not really the correct model for a one-dimensional dataset like sentences. Additionally, it would require a rank 4 tensor (NCHW) which means you'd have to add yet another layer of padding to the data, which just doesn't smell right either.
+
+_Always trust your nose in sushi restaurants and DL architectures._
+
 ```elixir
+# Define convolution options for convenience
 conv_opts = [
   kernel_size: 3,
   activation: :relu
 ]
 
+# Define pooling options for convenience
 max_pool_opts = [
   kernel_size: 3,
   stride: 3
 ]
 
+# Collect shape info for model definition
 num_words = vec_reviews |> Nx.shape() |> elem(2)
 vec_size = vec_reviews |> Nx.shape() |> elem(1)
 
@@ -540,27 +533,46 @@ model =
 ```
 
 ```output
--------------------------------------------------------
-                         Model
-=======================================================
- Layer                      Shape           Parameters
-=======================================================
- input_8 ( input )          {nil, 50, 32}   0
- conv_11 ( conv )           {nil, 16, 30}   2416
- relu_12 ( relu )           {nil, 16, 30}   0
- max_pool_13 ( max_pool )   {nil, 16, 28}   0
- flatten_14 ( flatten )     {nil, 448}      0
- dense_17 ( dense )         {nil, 224}      100576
- relu_18 ( relu )           {nil, 224}      0
- dense_21 ( dense )         {nil, 2}        450
- softmax_22 ( softmax )     {nil, 2}        0
--------------------------------------------------------
+------------------------------------------------------
+                        Model
+======================================================
+ Layer                     Shape           Parameters
+======================================================
+ input_4 ( input )         {nil, 50, 32}   0
+ conv_7 ( conv )           {nil, 16, 30}   2416
+ relu_8 ( relu )           {nil, 16, 30}   0
+ max_pool_9 ( max_pool )   {nil, 16, 10}   0
+ flatten_10 ( flatten )    {nil, 160}      0
+ dense_13 ( dense )        {nil, 224}      36064
+ relu_14 ( relu )          {nil, 224}      0
+ dense_17 ( dense )        {nil, 2}        450
+ softmax_18 ( softmax )    {nil, 2}        0
+------------------------------------------------------
 
 ```
 
+Check out the nice model summary above!  Notice that Axon unrolls the layers for you so you can see the compute layer as well as the activation layer for each conceptual "layer" of a network.
+
+The _Shape_ column is the output shape of that layer, and the _Parameters_ column reports the number of trainable parameters that exist in that layer.
+
+Being able to see  the shape of what you have constructed is vital as it 1. guides sizing for your DL environment, and 2. helps you analyze the complexity of your network.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Training Day
+
+Now that we have prepared training samples, related labels, and a model - let's do something with it!  The next code block performs the following:
+
+* Batches up our samples
+* Shuffles the batches (way more efficient than shuffling entire datasets, end results are not much different in this case)
+* Defines the training step with loss, optimizer, and any optional metrics we want reported
+* Compiles and executes the defined model and step function using EXLA to run on the target platform (CPU in our case, but could be GPU or TPU in the right environment)
+
 ```elixir
+# Set common batch size
 batch_size = 32
 
+# Split training data and labels into batches
 train_x =
   vec_reviews
   |> Nx.to_batched_list(batch_size)
@@ -569,12 +581,14 @@ train_y =
   labels
   |> Nx.to_batched_list(batch_size)
 
+# Shuffle batches
 {train_x, train_y} =
   train_x
   |> Enum.zip(train_y)
   |> Enum.shuffle()
   |> Enum.unzip()
 
+# Fit the model and store off result data
 final_params =
   model
   |> Axon.Training.step(:categorical_cross_entropy, Axon.Optimizers.adam(0.005),
@@ -586,74 +600,74 @@ final_params =
 ```output
 Training model for 10 epochs
 Metrics: [:accuracy]
-Epoch 1, batch 750 - Average Loss: 0.73228 - Average accuracy: 0.54904
+Epoch 1, batch 750 - Average Loss: 0.70477 - Average accuracy: 0.55033
 
-Epoch 1 time: 11.910624s
-Epoch 1 loss: 0.72920
-Epoch 0 accuracy: 0.55326
-
-
-Epoch 2, batch 750 - Average Loss: 0.64178 - Average accuracy: 0.62233
-
-Epoch 2 time: 13.064993s
-Epoch 2 loss: 0.64060
-Epoch 1 accuracy: 0.62456
+Epoch 1 time: 8.386572s
+Epoch 1 loss: 0.70263
+Epoch 1 accuracy: 0.55263
 
 
-Epoch 3, batch 750 - Average Loss: 0.62217 - Average accuracy: 0.64679
+Epoch 2, batch 750 - Average Loss: 0.64656 - Average accuracy: 0.63450
 
-Epoch 3 time: 15.075982s
-Epoch 3 loss: 0.62093
-Epoch 2 accuracy: 0.64882
-
-
-Epoch 4, batch 750 - Average Loss: 0.60884 - Average accuracy: 0.65638
-
-Epoch 4 time: 15.032197s
-Epoch 4 loss: 0.60761
-Epoch 3 accuracy: 0.65766
+Epoch 2 time: 7.223677s
+Epoch 2 loss: 0.64553
+Epoch 2 accuracy: 0.63439
 
 
-Epoch 5, batch 750 - Average Loss: 0.59408 - Average accuracy: 0.67346
+Epoch 3, batch 750 - Average Loss: 0.61159 - Average accuracy: 0.65983
 
-Epoch 5 time: 15.067038s
-Epoch 5 loss: 0.59270
-Epoch 4 accuracy: 0.67505
-
-
-Epoch 6, batch 750 - Average Loss: 0.57610 - Average accuracy: 0.68675
-
-Epoch 6 time: 15.04135s
-Epoch 6 loss: 0.57420
-Epoch 5 accuracy: 0.68842
+Epoch 3 time: 6.85737s
+Epoch 3 loss: 0.61159
+Epoch 3 accuracy: 0.65905
 
 
-Epoch 7, batch 750 - Average Loss: 0.55729 - Average accuracy: 0.70150
+Epoch 4, batch 750 - Average Loss: 0.59518 - Average accuracy: 0.67358
 
-Epoch 7 time: 15.047885s
-Epoch 7 loss: 0.55474
-Epoch 6 accuracy: 0.70417
-
-
-Epoch 8, batch 750 - Average Loss: 0.53418 - Average accuracy: 0.72112
-
-Epoch 8 time: 15.185222s
-Epoch 8 loss: 0.53189
-Epoch 7 accuracy: 0.72357
+Epoch 4 time: 7.419884s
+Epoch 4 loss: 0.59576
+Epoch 4 accuracy: 0.67251
 
 
-Epoch 9, batch 750 - Average Loss: 0.50976 - Average accuracy: 0.73979
+Epoch 5, batch 750 - Average Loss: 0.57960 - Average accuracy: 0.68642
 
-Epoch 9 time: 15.101834s
-Epoch 9 loss: 0.50774
-Epoch 8 accuracy: 0.74165
+Epoch 5 time: 10.055084s
+Epoch 5 loss: 0.58052
+Epoch 5 accuracy: 0.68474
 
 
-Epoch 10, batch 750 - Average Loss: 0.47534 - Average accuracy: 0.76171
+Epoch 6, batch 750 - Average Loss: 0.56135 - Average accuracy: 0.70058
 
-Epoch 10 time: 15.01978s
-Epoch 10 loss: 0.47397
-Epoch 9 accuracy: 0.76269
+Epoch 6 time: 10.081655s
+Epoch 6 loss: 0.56284
+Epoch 6 accuracy: 0.69905
+
+
+Epoch 7, batch 750 - Average Loss: 0.53980 - Average accuracy: 0.71563
+
+Epoch 7 time: 9.994337s
+Epoch 7 loss: 0.54174
+Epoch 7 accuracy: 0.71423
+
+
+Epoch 8, batch 750 - Average Loss: 0.52001 - Average accuracy: 0.72912
+
+Epoch 8 time: 10.047007s
+Epoch 8 loss: 0.52189
+Epoch 8 accuracy: 0.72778
+
+
+Epoch 9, batch 750 - Average Loss: 0.49306 - Average accuracy: 0.75013
+
+Epoch 9 time: 10.064491s
+Epoch 9 loss: 0.49453
+Epoch 9 accuracy: 0.74888
+
+
+Epoch 10, batch 750 - Average Loss: 0.46847 - Average accuracy: 0.76367
+
+Epoch 10 time: 9.948258s
+Epoch 10 loss: 0.46999
+Epoch 10 accuracy: 0.76279
 
 
 Training finished
@@ -668,215 +682,225 @@ Training finished
   optimizer_state: {%{
      count: #Nx.Tensor<
        s64
-       7780
+       7820
 >,
      mu: %{
-       "conv_11_bias" => #Nx.Tensor<
+       "conv_7_bias" => #Nx.Tensor<
          f32[16]
-         [-0.00791921466588974, 0.016271114349365234, 0.008273466490209103, 0.00412947591394186, -0.005331954453140497, -0.005285616498440504, 0.00805414654314518, 1.0926168761216104e-4, -0.01934986747801304, -0.00655314652249217, -0.0048054116778075695, 0.003911511041224003, -0.007367817219346762, 0.007299387361854315, 0.012427513487637043, -0.002290696371346712]
+         [3.2227300107479095e-4, 0.0095644136890769, -0.008139482699334621, -0.0027612894773483276, -0.0010794991394504905, -0.0028952837456017733, -0.007518268655985594, -0.005934776272624731, -0.0016826173523440957, 0.002518680179491639, -0.0033286542166024446, -0.005765915848314762, -0.004393366165459156, 0.002330897143110633, 6.064052577130497e-4, -8.10608034953475e-4]
 >,
-       "conv_11_kernel" => #Nx.Tensor<
+       "conv_7_kernel" => #Nx.Tensor<
          f32[16][50][3]
          [
            [
-             [0.0013083111261948943, 0.001581721007823944, -0.004306764807552099],
-             [0.0011764524970203638, 0.0046688164584338665, 5.64444599149283e-6],
-             [-9.64949547778815e-4, -0.0039008590392768383, -0.005115661770105362],
-             [0.0056749871000647545, -3.118923050351441e-4, 7.719428394921124e-4],
-             [-0.006353455130010843, 0.003965018782764673, 4.4135114876553416e-4],
-             [-0.0024758970830589533, -0.0023610054049640894, 0.0022335927933454514],
-             [0.0034378597047179937, 0.0047895354218780994, 0.005551621317863464],
-             [-0.0011363123776391149, 3.6413755151443183e-4, 0.0012181686470285058],
-             [0.0011838262435048819, 1.7559449770487845e-4, -0.0016978844068944454],
-             [-0.0037831817753612995, -0.007492634933441877, 1.7864088295027614e-4],
-             [-0.001881408505141735, 0.004854519385844469, -0.0022633085027337074],
-             [6.522071780636907e-4, 0.004345071967691183, 4.964290419593453e-4],
-             [0.003236033720895648, 0.0029032432939857244, 3.0154568958096206e-4],
-             [-0.0029958037193864584, ...],
+             [-1.9062634964939207e-4, -8.108066977001727e-4, 4.0997179894475266e-5],
+             [0.0015048687346279621, 6.137906457297504e-4, -2.0692050748039037e-4],
+             [0.0032403289806097746, -0.0012199728516861796, 7.542996318079531e-4],
+             [8.890854951459914e-5, -1.5183765208348632e-4, -1.7044233391061425e-4],
+             [0.002402942394837737, 0.0015232136938720942, -3.934586711693555e-4],
+             [-0.0028455478604882956, -2.591105876490474e-4, 9.779423999134451e-5],
+             [-0.0026478483341634274, -0.0029144124127924442, -0.0016663501737639308],
+             [0.0013711592182517052, -3.203510132152587e-4, -0.00162782974075526],
+             [-5.621418822556734e-4, -6.108048255555332e-4, 6.59526907838881e-4],
+             [-0.0025019377935677767, -0.0018223176011815667, -5.484967259690166e-4],
+             [-0.0013559216167777777, 0.0015888756606727839, 0.0012554681161418557],
+             [-3.45393898896873e-4, -5.674783024005592e-4, -6.657365593127906e-4],
+             [-0.0034058119636029005, 2.384830586379394e-4, -4.501438816078007e-4],
+             [-8.674931013956666e-4, ...],
              ...
            ],
            ...
          ]
 >,
-       "dense_17_bias" => #Nx.Tensor<
+       "dense_13_bias" => #Nx.Tensor<
          f32[224]
-         [6.904511246830225e-4, 3.6531343357637525e-4, -0.0028100532945245504, 5.591714289039373e-4, -0.001807277207262814, 0.0019359150901436806, 1.677350519457832e-4, -0.0010278597474098206, 0.0011590492213144898, -7.434518774971366e-4, 0.002258103573694825, 5.638462607748806e-4, 0.0046501560136675835, -6.843995652161539e-5, -0.0011758430628105998, 0.0017849223222583532, 9.314014459960163e-4, -0.0022186478599905968, 6.243021343834698e-4, -0.0010734229581430554, -0.002155976602807641, 0.0022309941705316305, -5.007702566217631e-5, 0.0016016216250136495, 4.4337482540868223e-4, -7.435611914843321e-4, 0.001442192355170846, 3.157207684125751e-4, 2.7197159943170846e-4, -1.6467692330479622e-4, 7.549962028861046e-4, 0.005818433128297329, 2.7902968577109277e-4, -0.0035379871260374784, 7.961451774463058e-4, -9.620862692827359e-5, -0.0018990595126524568, -0.0015871565556153655, -2.0751182455569506e-4, ...]
+         [5.028013256378472e-4, 5.953820655122399e-4, -8.77024867804721e-5, 2.4398925597779453e-4, -4.6653489698655903e-4, -5.689364043064415e-4, 0.0012081855675205588, 0.002334404503926635, -1.5519448788836598e-4, 0.0017863473622128367, -5.4399282817030326e-5, -0.0011806716211140156, -2.1060604194644839e-4, -3.2346262014470994e-4, -2.822357346303761e-4, 0.0023029083386063576, -1.8311791791347787e-5, -2.7802461409009993e-4, -4.064096719957888e-4, -6.425196770578623e-4, 3.9082540752133355e-5, 0.0020690569654107094, -0.003075852757319808, -5.534004303626716e-4, -4.3445415212772787e-4, -0.0024350702296942472, -2.706727245822549e-4, -0.001165827619843185, -0.0029709814116358757, -0.003894395660609007, 4.519172653090209e-4, 0.006464774254709482, 0.00270305247977376, 0.0011349174892529845, 2.0678942382801324e-4, 6.094140699133277e-4, -4.324235487729311e-4, -3.000244323629886e-4, 9.288036962971091e-4, ...]
 >,
-       "dense_17_kernel" => #Nx.Tensor<
-         f32[448][224]
+       "dense_13_kernel" => #Nx.Tensor<
+         f32[160][224]
          [
-           [3.091739199589938e-5, -1.2401855542520934e-8, 5.3393960115499794e-5, 4.873346597378259e-7, 2.99706440221037e-11, 2.522807562854723e-7, -8.880331733962521e-5, 7.969544640218373e-6, -1.8004608864430338e-4, 1.5206389036848122e-7, 6.344409484881908e-5, 1.365146484744173e-8, 2.9257641290314496e-4, -1.5536707004890832e-18, 2.8208437470311765e-6, -1.3436184644888272e-6, 1.4391324612006429e-6, -7.132594248560054e-8, -1.235274612554349e-5, 3.271056048106402e-4, -2.181294153549146e-14, 3.360453702043742e-4, 1.308638311456889e-4, -2.0545422739814967e-4, 5.612344248220325e-4, 1.1830348256580692e-7, -4.3768892510342994e-7, -1.0566132147005192e-7, -2.641241007950157e-4, 2.7991304523311555e-4, 1.2934314099766198e-6, -1.2993668497074395e-4, 6.385782035067677e-5, 4.453982401173562e-4, -4.528729277808452e-6, 2.0464169665501686e-6, 4.452858206605015e-7, -9.101128671318293e-5, ...],
+           [-1.0577636567177251e-4, -7.801720424208125e-13, -5.420271918410435e-6, -1.6983131354209036e-4, 1.1811366130132228e-4, -1.3297003170009702e-4, -4.411379268276505e-5, 1.525840434624115e-5, 1.9617184378347458e-20, 1.2234672794875223e-5, 5.320491254678927e-6, 3.474952245596796e-5, 9.194391168421134e-6, -2.422568795736879e-4, 3.6967958294553682e-6, -3.831282811006531e-7, -2.056506673397962e-5, -2.7295529434923083e-5, -5.52530400454998e-6, -3.667930286610499e-5, 2.5514582375762984e-5, -5.5362934290315025e-6, -1.8148673916584812e-5, -3.147664529024041e-8, 6.252988404842341e-11, -1.2669262650888413e-4, -3.1021358154248446e-5, 8.595389772381168e-6, -3.518910261846031e-6, -9.743471746332943e-4, -1.7854628094937652e-4, -3.835497864201898e-6, -5.9313979363651015e-6, 1.5561736654490232e-4, -1.7050540146446025e-10, -8.54258905746974e-5, 7.72097337176092e-5, 9.14079204919504e-16, ...],
            ...
          ]
 >,
-       "dense_21_bias" => #Nx.Tensor<
+       "dense_17_bias" => #Nx.Tensor<
          f32[2]
-         [0.028337612748146057, -0.02833757922053337]
+         [-0.024214431643486023, 0.024214422330260277]
 >,
-       "dense_21_kernel" => #Nx.Tensor<
+       "dense_17_kernel" => #Nx.Tensor<
          f32[224][2]
          [
-           [8.642948814667761e-4, -8.642947068437934e-4],
-           [4.30783664342016e-4, -4.307836352381855e-4],
-           [-0.0014048117445781827, 0.0014048125594854355],
-           [0.0011830059811472893, -0.0011830063303932548],
-           [6.419011624529958e-4, -6.41901046037674e-4],
-           [0.0012021481525152922, -0.0012021481525152922],
-           [0.0018158823950216174, -0.0018158823950216174],
-           [-0.002859680214896798, 0.002859680214896798],
-           [-0.0033072566147893667, 0.0033072566147893667],
-           [-0.0040135495364665985, 0.0040135495364665985],
-           [0.006388808600604534, -0.006388806737959385],
-           [-5.800308426842093e-4, 5.800314829684794e-4],
-           [0.007988641038537025, -0.00798864010721445],
-           [-2.0284174752305262e-5, 2.0284191123209894e-5],
-           [8.853139588609338e-4, -8.853141916915774e-4],
-           [0.006093156989663839, -0.006093156524002552],
-           [3.4068338572978973e-4, -3.4068303648382425e-4],
-           [-0.001870849053375423, 0.0018708487041294575],
+           [9.754352504387498e-4, -9.754354832693934e-4],
+           [2.9551892657764256e-4, -2.955182862933725e-4],
+           [-2.006600989261642e-4, 2.006602007895708e-4],
+           [2.6017411073553376e-5, -2.6016714400611818e-5],
+           [4.3895054841414094e-4, -4.3895014096051455e-4],
+           [0.002976137911900878, -0.0029761360492557287],
+           [-6.552714621648192e-4, 6.552719278261065e-4],
+           [0.0016174055635929108, -0.0016174050979316235],
+           [-3.602962242439389e-4, 3.6029628245159984e-4],
+           [-5.576719413511455e-4, 5.576718831434846e-4],
+           [3.773492426262237e-5, -3.773489879677072e-5],
+           [3.933311381842941e-4, -3.933324769604951e-4],
+           [0.001110837678425014, -0.0011108375620096922],
+           [1.0936838225461543e-4, -1.0936819307971746e-4],
+           [-0.0019235549261793494, 0.0019235557410866022],
+           [-0.0022808159701526165, 0.0022808171343058348],
+           [-2.0762452550115995e-5, 2.0762425265274942e-5],
+           [-7.611191249452531e-4, 7.611189503222704e-4],
            ...
          ]
 >
      },
      nu: %{
-       "conv_11_bias" => #Nx.Tensor<
+       "conv_7_bias" => #Nx.Tensor<
          f32[16]
-         [7.55445973481983e-4, 0.004909742623567581, 0.004036047030240297, 6.087872316129506e-4, 4.284991882741451e-4, 0.0011239869054406881, 0.0018902200972661376, 0.0011104622390121222, 0.012058616615831852, 3.0899918056093156e-4, 2.719613548833877e-4, 0.0032438025809824467, 5.022498080506921e-4, 4.2284620576538146e-4, 6.919988663867116e-4, 6.595122977159917e-4]
+         [3.468408831395209e-4, 8.459368837065995e-4, 5.831681773997843e-4, 3.691146557684988e-4, 0.0017728762468323112, 0.0013990893494337797, 2.222609764430672e-4, 4.490608989726752e-4, 3.5716520505957305e-4, 7.860020268708467e-4, 3.6495953099802136e-4, 0.014675654470920563, 1.8287014972884208e-4, 0.0134428134188056, 5.158637650310993e-4, 1.9121043442282826e-4]
 >,
-       "conv_11_kernel" => #Nx.Tensor<
+       "conv_7_kernel" => #Nx.Tensor<
          f32[16][50][3]
          [
            [
-             [1.3941872748546302e-4, 1.8036946130450815e-4, 6.991268310230225e-5],
-             [9.791412594495341e-5, 1.2174060975667089e-4, 8.346827235072851e-5],
-             [9.13179901544936e-5, 9.382811549585313e-5, 6.628137634834275e-5],
-             [1.0018510511144996e-4, 1.1894333147211e-4, 7.09207815816626e-5],
-             [1.8993833509739488e-4, 1.7642778402660042e-4, 7.122429087758064e-5],
-             [1.4150778588373214e-4, 1.1420677765272558e-4, 5.794738535769284e-5],
-             [2.0796236640308052e-4, 2.4051903164945543e-4, 8.872488979250193e-5],
-             [9.701964154373854e-5, 1.0233864304609597e-4, 7.570291927549988e-5],
-             [1.286453625652939e-4, 1.3021845370531082e-4, 7.013523281784728e-5],
-             [1.230252382811159e-4, 1.0313484381185845e-4, 6.80092052789405e-5],
-             [6.735069473506883e-5, 7.809000817360356e-5, 4.298695785109885e-5],
-             [1.065839096554555e-4, 1.4248125080484897e-4, 6.200484494911507e-5],
-             [1.1482958507258445e-4, 2.0410647266544402e-4, 7.010422996245325e-5],
+             [7.189141615526751e-5, 6.929429218871519e-5, 3.807261600741185e-5],
+             [1.0092929005622864e-4, 7.471032586181536e-5, 6.342108099488541e-5],
+             [8.678946323925629e-5, 7.656991510884836e-5, 3.806307722697966e-5],
+             [6.953159754630178e-5, 6.14892560406588e-5, 3.750003452296369e-5],
+             [7.885062223067507e-5, 5.2418381528696045e-5, 3.420732537051663e-5],
+             [8.508955215802416e-5, 6.721456156810746e-5, 4.719903881778009e-5],
+             [2.014614292420447e-4, 7.063793600536883e-5, 7.356159767368808e-5],
+             [8.862717368174344e-5, 5.868456719326787e-5, 3.68917899322696e-5],
+             [6.038573701516725e-5, 4.45104597019963e-5, 3.131745324935764e-5],
+             [1.0117762576555833e-4, 7.514187745982781e-5, 3.9364880649372935e-5],
+             [6.514327105833218e-5, 3.956038926844485e-5, 3.2053714676294476e-5],
+             [1.04985483631026e-4, 5.484431312652305e-5, 4.632975105778314e-5],
+             [1.179929095087573e-4, 4.393776907818392e-5, 4.0210514271166176e-5],
              ...
            ],
            ...
          ]
 >,
-       "dense_17_bias" => #Nx.Tensor<
+       "dense_13_bias" => #Nx.Tensor<
          f32[224]
-         [1.4632392776547931e-5, 3.391755308257416e-5, 5.66685848752968e-5, 1.1612155503826216e-5, 2.1477371774381027e-5, 2.516200220270548e-5, 1.792047987692058e-5, 2.9509359592339024e-5, 4.9767684686230496e-5, 1.2259230061317794e-5, 1.766869900166057e-5, 2.260950714116916e-5, 7.485852984245867e-5, 1.3753697203355841e-5, 3.5417092476563994e-6, 1.5949752196320333e-5, 9.934324771165848e-5, 9.031305671669543e-5, 3.960949106840417e-5, 3.111851401627064e-5, 1.8155073121306486e-5, 7.393684063572437e-5, 6.096731158322655e-5, 6.954497075639665e-5, 5.340652569429949e-5, 1.842041965574026e-4, 3.657975685200654e-5, 4.464221774469479e-7, 1.923911077028606e-5, 5.404025432653725e-5, 7.109250873327255e-5, 4.154944690526463e-5, 1.745981353451498e-5, 8.537979010725394e-5, 5.9375441196607426e-5, 2.48979249590775e-5, 6.1020964494673535e-5, 2.5086558889597654e-4, ...]
+         [1.072773156920448e-4, 1.1247793008806184e-4, 2.1731968899985077e-6, 2.2137162886792794e-5, 1.1737779277609661e-4, 2.162903401767835e-4, 6.159255281090736e-5, 1.2789455649908632e-4, 3.305015638943587e-7, 2.8431844839360565e-5, 7.902600373199675e-6, 1.1370776337571442e-4, 1.5548682131338865e-4, 3.563416612450965e-5, 1.47192768054083e-4, 1.84058808372356e-4, 2.483004664100008e-7, 3.483564796624705e-5, 1.0336072591599077e-5, 7.120469672372565e-5, 1.0505160025786608e-4, 9.488892101217061e-5, 4.445750164450146e-5, 1.0981586819980294e-4, 1.0984501386701595e-5, 1.0092420416185632e-4, 4.137030045967549e-4, 3.5257995477877557e-4, 1.519987199571915e-5, 2.3530088947154582e-4, 3.939930320484564e-5, 4.1466497350484133e-4, 9.544500062474981e-5, 0.0011235701385885477, 5.1094251830363646e-5, 4.233711297274567e-5, 8.296039595734328e-5, 7.349253337451955e-6, ...]
 >,
-       "dense_17_kernel" => #Nx.Tensor<
-         f32[448][224]
+       "dense_13_kernel" => #Nx.Tensor<
+         f32[160][224]
          [
-           [2.9306943361007143e-7, 1.3724275049753487e-6, 1.051749563885096e-6, 5.218827254793723e-7, 2.113911250489764e-7, 1.0884331231864053e-6, 6.921153499206412e-7, 1.7680898736216477e-6, 9.136705898526998e-7, 3.4961382766596216e-7, 4.0805178969094413e-7, 7.502037533413386e-7, 3.3648764201643644e-6, 2.6631815330802056e-7, 3.0822403118691e-7, 6.124972173893184e-7, 2.943589834103477e-6, 6.146367013570853e-6, 1.2471075194753212e-7, 3.172122660544119e-6, 4.6974403744570736e-7, 3.1838669656281127e-6, 9.35444677452324e-6, 1.2957832041138317e-5, 2.4754961032158462e-6, 2.3309166863327846e-6, 1.4058348369871965e-6, 4.1543248840980596e-9, 9.978844900615513e-6, 8.961033586274425e-7, 1.3590910157290637e-6, 1.0128721896762727e-6, 3.5266461395622173e-7, 3.1730380669614533e-6, 6.6391098698659334e-6, 1.5742587038403144e-6, 5.055709152657073e-6, ...],
+           [2.480349394318182e-6, 1.7507101119917934e-6, 2.4074694238152006e-7, 2.0567622414091602e-5, 1.2722577594104223e-5, 1.2072649951733183e-5, 1.367343884339789e-5, 2.8238346203579567e-6, 2.0747730200554315e-9, 6.045364102647e-7, 3.600579532303527e-7, 4.875343165622326e-6, 3.5463037875160808e-6, 3.643200398073532e-5, 1.874820918601472e-5, 1.3600039210359682e-6, 5.4860773701648213e-8, 1.6323875797752407e-6, 3.9508051941083977e-7, 4.69952328785439e-6, 1.322446496487828e-5, 8.467172847304028e-6, 1.4356163546835887e-6, 1.1609025023062713e-5, 3.78263678157964e-7, 9.483470421400853e-6, 1.0125275366590358e-5, 4.95985023007961e-6, 8.883572490958613e-7, 6.295457569649443e-5, 7.128508627829433e-7, 4.1129977034870535e-5, 1.5882252455412527e-6, 2.7226575184613466e-5, 1.230289399245521e-6, 3.3825008358689956e-6, 1.825723416004621e-6, ...],
            ...
          ]
 >,
-       "dense_21_bias" => #Nx.Tensor<
+       "dense_17_bias" => #Nx.Tensor<
          f32[2]
-         [0.11487168818712234, 0.11487170308828354]
+         [0.1124061718583107, 0.1124061644077301]
 >,
-       "dense_21_kernel" => #Nx.Tensor<
+       "dense_17_kernel" => #Nx.Tensor<
          f32[224][2]
          [
-           [9.242510714102536e-5, 9.242510714102536e-5],
-           [1.1132557119708508e-4, 1.1132557119708508e-4],
-           [3.2513830228708684e-4, 3.251382731832564e-4],
-           [3.0981318559497595e-5, 3.09813221974764e-5],
-           [6.501023017335683e-5, 6.501023017335683e-5],
-           [1.635448425076902e-4, 1.6354482795577496e-4],
-           [1.7336495511699468e-4, 1.7336494056507945e-4],
-           [2.545179158914834e-4, 2.545179158914834e-4],
-           [3.3873567008413374e-4, 3.387356991879642e-4],
-           [9.32289331103675e-5, 9.322894038632512e-5],
-           [2.2231763068703003e-5, 2.22317612497136e-5],
-           [9.086152567761019e-5, 9.086152567761019e-5],
-           [3.2156662200577557e-4, 3.215665929019451e-4],
-           [1.2935027370986063e-5, 1.2935026461491361e-5],
-           [2.1347565052565187e-5, 2.1347563233575784e-5],
-           [9.677720663603395e-5, 9.677721391199157e-5],
-           [3.278403601143509e-4, 3.2784027280285954e-4],
-           [3.281855024397373e-4, ...],
+           [2.4033385852817446e-4, 2.4033384397625923e-4],
+           [3.512618422973901e-4, 3.512618422973901e-4],
+           [3.46972933584766e-6, 3.46972933584766e-6],
+           [7.026110688457265e-5, 7.026110688457265e-5],
+           [1.449452101951465e-4, 1.4494522474706173e-4],
+           [0.002190278610214591, 0.002190278610214591],
+           [8.663452899781987e-5, 8.663452899781987e-5],
+           [1.6777445853222162e-4, 1.677744439803064e-4],
+           [2.2328795239445753e-6, 2.2328792965709e-6],
+           [4.53450447821524e-5, 4.53450447821524e-5],
+           [2.223258707090281e-5, 2.223258707090281e-5],
+           [2.970546775031835e-4, 2.9705470660701394e-4],
+           [3.738315717782825e-4, 3.7383154267445207e-4],
+           [4.558346699923277e-5, 4.558346336125396e-5],
+           [1.2879847781732678e-4, 1.2879847781732678e-4],
+           [2.894012723118067e-4, 2.8940130141563714e-4],
+           [8.819250751912477e-7, 8.819250751912477e-7],
+           [8.686767250765115e-5, ...],
            ...
          ]
 >
      }
    }},
   params: %{
-    "conv_11_bias" => #Nx.Tensor<
+    "conv_7_bias" => #Nx.Tensor<
       f32[16]
-      [-0.3112342655658722, -0.3603881597518921, -0.38778674602508545, -0.17280472815036774, -0.06644356995820999, -0.17691193521022797, -0.2922506332397461, -0.34921321272850037, -0.43251365423202515, -0.2554040253162384, -0.11922823637723923, -0.33832159638404846, -0.531607985496521, -0.02297632023692131, -0.06506745517253876, -0.15416406095027924]
+      [-0.31324151158332825, -0.24684284627437592, -0.383484423160553, -0.4107601046562195, -0.08358661085367203, -0.49984511733055115, -0.1605314165353775, -0.23728154599666595, -0.44615912437438965, -0.3206051290035248, -0.5330300331115723, -0.09558617323637009, -0.18923859298229218, -0.632673978805542, -0.12115009874105453, -0.13099150359630585]
 >,
-    "conv_11_kernel" => #Nx.Tensor<
+    "conv_7_kernel" => #Nx.Tensor<
       f32[16][50][3]
       [
         [
-          [-0.20549273490905762, 0.4910601079463959, -0.3983250558376312],
-          [-0.23797892034053802, -0.6853095293045044, -0.2903415858745575],
-          [0.44235384464263916, 0.6372160911560059, 0.540153980255127],
-          [-0.37827175855636597, 0.22355420887470245, 0.24123913049697876],
-          [0.33265990018844604, -0.7471524477005005, 0.0716194435954094],
-          [0.597466230392456, -0.029973626136779785, -0.27272462844848633],
-          [0.04916917532682419, -0.37578415870666504, 0.31167498230934143],
-          [0.2928239107131958, 0.5021021366119385, 0.1995297521352768],
-          [-0.5343046188354492, 0.46602848172187805, 0.2896500527858734],
-          [0.07241422683000565, 0.437477707862854, -0.2743218243122101],
-          [0.4656620919704437, -0.055531326681375504, -0.1677805334329605],
-          [-0.20989128947257996, 0.3244912922382355, 0.2904171347618103],
-          [0.46033307909965515, -0.43624934554100037, 0.27395081520080566],
-          [0.09633241593837738, 0.4812283515930176, -0.10740850865840912],
+          [-0.8448702692985535, -0.10131814330816269, -0.4929361045360565],
+          [0.1115211620926857, -0.13704818487167358, 0.7080847024917603],
+          [0.033028531819581985, -0.47894901037216187, 0.026027647778391838],
+          [-0.024106653407216072, -0.8786869049072266, 0.15421253442764282],
+          [0.17129090428352356, 0.16079659759998322, -0.17115995287895203],
+          [0.15138225257396698, -0.3016548454761505, -0.627050518989563],
+          [-0.6419205069541931, 0.7785066366195679, 0.2324676513671875],
+          [-0.6062171459197998, 0.49954700469970703, 0.29182273149490356],
+          [0.22463738918304443, 0.8457678556442261, 0.5656325817108154],
+          [-0.41682401299476624, 0.556361734867096, -0.4558747410774231],
+          [-0.24351221323013306, -0.3007464110851288, -0.4310902953147888],
+          [0.033633433282375336, -0.510291337966919, -0.12372980266809464],
+          [-0.003076359862461686, 0.4971410930156708, 0.5022693872451782],
+          [0.13654477894306183, -0.4587074816226959, -0.19314159452915192],
           ...
         ],
         ...
       ]
 >,
-    "dense_17_bias" => #Nx.Tensor<
+    "dense_13_bias" => #Nx.Tensor<
       f32[224]
-      [-0.437947154045105, -0.3123781085014343, -0.07364602386951447, -0.17842651903629303, -0.23810754716396332, -0.5842221975326538, -0.31864720582962036, -0.4883136451244354, -0.342776894569397, -0.42458009719848633, -0.037980902940034866, -0.4672001600265503, -0.29021957516670227, -0.34677910804748535, -0.12901832163333893, -0.34956464171409607, -0.24181561172008514, -0.1848868876695633, 0.14107340574264526, -0.24357864260673523, -0.5238861441612244, -0.34390661120414734, -0.5149201154708862, -0.2905629575252533, -0.4239664077758789, -0.2006053477525711, -0.6452786326408386, 0.00785798765718937, 0.01762772910296917, -0.31600648164749146, -0.6475844979286194, -0.2795366048812866, -0.314314603805542, -0.2918281853199005, -0.45064109563827515, -0.35721874237060547, -0.8386235237121582, -0.115989089012146, -0.572711706161499, -0.4273826479911804, 0.047104764729738235, ...]
+      [-0.33551210165023804, -0.4172379672527313, -0.2248600423336029, -0.5671175122261047, -0.6558375954627991, -0.24558308720588684, -0.433403879404068, -0.41936659812927246, -0.2164633423089981, -0.679656982421875, -0.23654529452323914, -0.5087382793426514, -0.536072850227356, -0.5601536631584167, -0.19702863693237305, -0.14778846502304077, -0.10814329236745834, -0.0615113265812397, -0.10328047722578049, -0.4098038673400879, -0.7414419054985046, -0.4205392599105835, -0.3974978029727936, -0.35563188791275024, -0.36069217324256897, -0.7645862698554993, -0.015673840418457985, -0.42516520619392395, -0.27519160509109497, -0.2059009075164795, -0.2942889928817749, -0.31751349568367004, -0.5922521948814392, -0.21472971141338348, -0.2240649163722992, -0.4803168773651123, -0.5159572958946228, -0.37151676416397095, -0.32993265986442566, -0.4517405927181244, -0.38762035965919495, ...]
 >,
-    "dense_17_kernel" => #Nx.Tensor<
-      f32[448][224]
+    "dense_13_kernel" => #Nx.Tensor<
+      f32[160][224]
       [
-        [-0.06112518534064293, -0.034945305436849594, -0.09290359169244766, -0.06401459872722626, -0.10287437587976456, 0.09422516077756882, -0.1531984508037567, 0.17036505043506622, -0.0858108401298523, 0.014376009814441204, 0.04942992702126503, -0.08141803741455078, -0.200773686170578, 0.0580948144197464, 9.619204211048782e-4, -0.07350172847509384, 0.1663588285446167, 0.3436208963394165, -0.08687152713537216, 0.06988458335399628, -0.116461381316185, -0.13358521461486816, 0.07303635030984879, 0.04396055266261101, 0.01788153313100338, -0.059815481305122375, -0.2920133173465729, 0.03255588933825493, 0.28909382224082947, -0.21285240352153778, -0.3548406660556793, -0.14818280935287476, -0.11407753080129623, 0.055101651698350906, -0.2826368510723114, 0.13149738311767578, 0.02277165651321411, 0.010473266243934631, 0.09723909199237823, -0.13565070927143097, ...],
+        [-0.07678365707397461, -0.47502630949020386, 0.10501078516244888, 0.3876379430294037, -0.615111231803894, 0.20769326388835907, -0.02216706983745098, -0.2067483365535736, -0.12165672332048416, -0.08236672729253769, -0.04743330180644989, -0.05791448429226875, -0.4232255816459656, 0.4068324863910675, 7.640881231054664e-4, -0.36799678206443787, 0.05796109884977341, 0.04003266617655754, -0.20973102748394012, 0.21075288951396942, -0.4031173586845398, -0.05736593157052994, -0.032379209995269775, 0.06638497859239578, -0.027722755447030067, 0.24161593616008759, -0.39441150426864624, -0.23543253540992737, -0.028659649193286896, 0.18955311179161072, -0.040413521230220795, 0.07305802404880524, -0.13891930878162384, 0.2800672650337219, -0.027341563254594803, -0.09236516058444977, -0.1013014167547226, -0.025093404576182365, 0.016585618257522583, -0.2521904706954956, ...],
         ...
       ]
 >,
-    "dense_21_bias" => #Nx.Tensor<
+    "dense_17_bias" => #Nx.Tensor<
       f32[2]
-      [-0.1633363962173462, 0.16333632171154022]
+      [0.010051452554762363, -0.010051366873085499]
 >,
-    "dense_21_kernel" => #Nx.Tensor<
+    "dense_17_kernel" => #Nx.Tensor<
       f32[224][2]
       [
-        [-0.35980290174484253, 0.10821590572595596],
-        [0.17404888570308685, -0.20845367014408112],
-        [-0.22002916038036346, 0.20137226581573486],
-        [-0.1820477396249771, 0.19517645239830017],
-        [-0.20480495691299438, 0.20452432334423065],
-        [0.3792528212070465, -0.159099742770195],
-        [-0.1397138088941574, 0.04726365953683853],
-        [0.29189273715019226, 0.004816902335733175],
-        [-0.13852712512016296, 0.2147751897573471],
-        [0.08540838211774826, -0.15355022251605988],
-        [0.12210649996995926, -0.1296231746673584],
-        [0.14900998771190643, -0.37575194239616394],
-        [0.2787993848323822, -0.2978234887123108],
-        [0.14775268733501434, -0.21852438151836395],
-        [-0.08442993462085724, 0.21264991164207458],
-        [0.09074439108371735, -0.3663216829299927],
-        [0.356128066778183, -0.17420236766338348],
-        [0.14640724658966064, -0.3391481339931488],
-        [-0.28945404291152954, 0.1541050523519516],
+        [0.22375045716762543, -0.2310614287853241],
+        [-0.30603867769241333, 0.08108476549386978],
+        [0.09083671867847443, -0.1057014912366867],
+        [0.139017716050148, -0.2706860601902008],
+        [-0.24278704822063446, 0.47134557366371155],
+        [0.14463870227336884, -0.10134630650281906],
+        [-0.20641949772834778, 0.40610235929489136],
+        [0.4182576537132263, -0.22162142395973206],
+        [0.07391141355037689, -0.016260633245110512],
+        [-0.33264079689979553, 0.20767948031425476],
+        [0.0902998223900795, -0.1167803630232811],
+        [-0.22810602188110352, 0.20854762196540833],
+        [0.22369444370269775, -0.2525990307331085],
+        [0.11059700697660446, -0.3381538391113281],
+        [-0.3875426948070526, 0.29713085293769836],
+        [-0.21294523775577545, 0.28607863187789917],
+        [0.06354263424873352, -0.02609144151210785],
+        [0.13592156767845154, -0.32779115438461304],
+        [0.10883769392967224, -0.27954262495040894],
         ...
       ]
 >
   }
 }
 ```
+
+Like most other DL frameworks, Axon provides incremental training performance feedback.  We can also see that when it finishes up `final_params` holds quite a bit more state than just the final model parameters.  This allows for a nice _post mortem_ analysis of the training run whereas most frameworks don't make that information readily available without jumping through some hoops.
+
+At this point we should have a model with ~70-80% accuracy.  More epochs might have improved performance, but the literature reports mid-80s for this approach in most cases, so... yeah.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Testing our model
+
+For those who caught it, I committed a major ML sin above - I didn't split out train/test sets.  In production that would be a _**very bad idea**_ but in this case I didn't want us to get lost in the weeds.  Besides, how hard is it to cook up some sample reviews ourselves, amiright?
 
 ```elixir
 our_reviews = [
@@ -912,32 +936,13 @@ vec_our_reviews =
 ```
 
 ```elixir
-require Axon
-
-yhat = Axon.predict(model, final_params[:params], vec_our_reviews)
-```
-
-```output
-#Nx.Tensor<
-  f32[6][2]
-  [
-    [0.025229092687368393, 0.9747708439826965],
-    [0.36860916018486023, 0.6313908100128174],
-    [0.9994137287139893, 5.862718098796904e-4],
-    [1.3409265919861468e-9, 1.0],
-    [0.17816691100597382, 0.821833074092865],
-    [0.08915477246046066, 0.9108452796936035]
-  ]
->
-```
-
-```elixir
-yhat |> Nx.argmax(axis: 1)
+Axon.predict(model, final_params[:params], vec_our_reviews, compiler: EXLA)
+|> Nx.argmax(axis: 1)
 ```
 
 ```output
 #Nx.Tensor<
   s64[6]
-  [1, 1, 0, 1, 1, 1]
+  [1, 0, 0, 0, 1, 1]
 >
 ```
