@@ -1,4 +1,4 @@
-FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04
+FROM nvidia/cuda:11.1-cudnn8-devel-ubuntu18.04
 
 # Disable Nvidia updates
 WORKDIR /etc/apt/sources.list.d
@@ -42,5 +42,7 @@ RUN mix local.rebar --force && \
     echo 'PATH="${PATH}:/root/.mix/escripts"' >> ~/.bashrc
 
 # Add runtime env vars
-ENV XLA_TARGET=cuda102
+ENV XLA_TARGET=cuda111
 
+# Default execution is Livebook
+#CMD /root/.mix/escripts/livebook server

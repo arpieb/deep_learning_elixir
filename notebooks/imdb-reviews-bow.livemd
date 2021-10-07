@@ -1,0 +1,214 @@
+# IMDB Reviews Classification - BOW
+
+## Load deps
+
+<!-- livebook:{"disable_formatting":true} -->
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.1.0-dev", github: "elixir-nx/nx", sparse: "nx", override: true},
+    {:exla, "~> 0.1.0-dev", github: "elixir-nx/nx", sparse: "exla", override: true},
+    {:axon, "~> 0.1.0-dev", github: "elixir-nx/axon", branch: "main"},
+    {:scidata, "~> 0.1.2"},
+    {:nltex, "~> 0.1.0-dev", github: "arpieb/nltex", branch: "master", override: true}
+  ]#, force: true
+)
+```
+
+```elixir
+Application.put_env(:exla, :clients, default: [platform: :cuda, memory_fraction: 0.8])
+```
+
+## Retrieve IMDB movie reviews
+
+```elixir
+reviews = Scidata.IMDBReviews.download()
+```
+
+```elixir
+IO.puts(length(reviews.review))
+IO.puts(length(reviews.sentiment))
+```
+
+## Prepare review text data
+
+```elixir
+vocab = NLTEx.Vocabulary.transform(reviews.review)
+```
+
+```elixir
+defmodule Test.BagOfWords do
+  @moduledoc ~S"""
+  Generates a Bag of Words representation of text, given an indexed vocabulary
+  """
+
+  @default_defn_compiler EXLA
+
+  import Nx.Defn
+
+  def transform(docs, vocab, opts \\ []) do
+    iotas = Nx.iota({length(Map.keys(vocab))})
+
+    docs
+    |> Task.async_stream(
+      fn tokens ->
+        to_bow_single(tokens, vocab, iotas, opts)
+      end,
+      max_concurrency: System.schedulers_online() * 2
+    )
+    |> Enum.map(fn x -> elem(x, 1) end)
+    |> Nx.stack()
+  end
+
+  defp to_bow_single(doc, vocab, iotas, opts) do
+    tokenizer = opts[:tokenizer] || (&NLTEx.Tokenizer.Simple.transform/1)
+    case_handler = opts[:case_handler] || (&String.downcase/1)
+    stemmer = opts[:stemmer] || (&NLTEx.Stemmer.Porter.transform/1)
+
+    doc
+    |> tokenizer.()
+    |> Stream.map(stemmer)
+    |> Stream.map(case_handler)
+    |> Stream.map(fn token -> Map.get(vocab, token, -1) end)
+    |> Enum.to_list()
+    |> Nx.tensor(type: {:f, 32})
+    |> nx_bow_proc(iotas)
+  end
+
+  defnp nx_bow_proc(t, iotas) do
+    t
+    |> Nx.new_axis(-1)
+    |> Nx.equal(iotas)
+    |> Nx.sum(axes: [0])
+  end
+end
+```
+
+```elixir
+num_samples = length(reviews.review)
+
+# vec_reviews =
+#   reviews.review
+#   |> Enum.take(num_samples)
+#   |> Test.BagOfWords.transform(vocab)
+#   |> Nx.as_type({:u, 8})
+# File.open!("/data/rbates/vec_reviews.bin", [:write, :binary], fn ofs ->
+#   IO.binwrite(ofs, vec_reviews |> :erlang.term_to_binary())
+# end)
+# vec_reviews
+
+vec_reviews =
+  File.open!("/data/rbates/vec_reviews.bin", [:read, :binary], fn ifs ->
+    IO.binread(ifs, :all)
+    |> :erlang.binary_to_term()
+  end)
+```
+
+```elixir
+vec_reviews = Nx.new_axis(vec_reviews, 1)
+```
+
+## Prep sentiment labels
+
+```elixir
+labels =
+  reviews.sentiment
+  |> Enum.take(vec_reviews |> Nx.shape() |> elem(2))
+  |> Nx.tensor(type: {:f, 32})
+  |> Nx.new_axis(-1)
+  |> Nx.equal(Nx.iota({2}))
+
+Nx.sum(labels, axes: [0])
+```
+
+## Construct Axon binary classification model and train it!
+
+```elixir
+num_f = vec_reviews |> Nx.shape() |> elem(2)
+
+conv_opts = [
+  kernel_size: 4,
+  strides: 2,
+  activation: :relu
+]
+
+max_pool_opts = [
+  kernel_size: 4,
+  strides: 4
+]
+
+model =
+  Axon.input({nil, 1, num_f})
+  |> Axon.conv(32, conv_opts)
+  |> Axon.max_pool(max_pool_opts)
+  |> Axon.conv(64, conv_opts)
+  |> Axon.max_pool(max_pool_opts)
+  |> Axon.conv(128, conv_opts)
+  |> Axon.max_pool(max_pool_opts)
+  |> Axon.conv(256, conv_opts)
+  |> Axon.global_avg_pool()
+  |> Axon.dense(256, activation: :relu)
+  |> Axon.dense(2, activation: :sigmoid)
+```
+
+<!-- livebook:{"disable_formatting":true} -->
+
+```elixir
+batch_size = 64
+
+train_y = labels 
+|> Nx.to_batched_list(batch_size, leftover: :repeat)
+
+train_x = vec_reviews 
+|> Nx.to_batched_list(batch_size, leftover: :repeat)
+
+{train_x, train_y} = train_x
+|> Enum.zip(train_y)
+|> Enum.shuffle()
+|> Enum.unzip
+
+final_params =
+  model
+  |> Axon.Training.step(:categorical_cross_entropy, Axon.Optimizers.adam(0.005), metrics: [:accuracy])
+  |> Axon.Training.train(train_x, train_y, epochs: 5, compiler: EXLA)
+```
+
+```elixir
+File.open!("/data/rbates/params_bow_conv1d.bin", [:write, :binary], fn ofs ->
+  IO.binwrite(ofs, final_params |> :erlang.term_to_binary())
+end)
+
+# final_params =
+#   File.open!("/data/rbates/params_bow_conv1d.bin", [:read, :binary], fn ifs ->
+#     IO.binread(ifs, :all)
+#     |> :erlang.binary_to_term()
+#   end)
+```
+
+## Testing time!
+
+```elixir
+our_reviews = [
+  "This movie was great really enjoyed it loved it",
+  "Meh, I could take it or leave it",
+  "this movie was the worst and sucked",
+  "The story centers around Barry McKenzie who must go to England if he wishes to claim his inheritance. Being about the grossest Aussie shearer ever to set foot outside this great Nation of ours there is something of a culture clash and much fun and games ensue. The songs of Barry McKenzie(Barry Crocker) are highlights.",
+  "'The Adventures Of Barry McKenzie' started life as a satirical comic strip in 'Private Eye', written by Barry Humphries and based on an idea by Peter Cook. McKenzie ( 'Bazza' to his friends ) is a lanky, loud, hat-wearing Australian whose two main interests in life are sex ( despite never having had any ) and Fosters lager. In 1972, he found his way to the big screen for the first of two outings. It must have been tempting for Humphries to cast himself as 'Bazza', but he wisely left the job to Barry Crocker ( later to sing the theme to the television soap opera 'Neighbours'! ). Humphries instead played multiple roles in true Peter Sellers fashion, most notably Bazza's overbearing Aunt 'Edna Everage' ( this was before she became a Dame ).<br /><br />You know this is not going to be 'The Importance Of Being Ernest' when its censorship classification N.P.A. stands for 'No Poofters Allowed'. Pom-hating Bazza is told by a Sydney solicitor that in order to inherit a share in his father's will he must go to England to absorb British culture. With Aunt Edna in tow, he catches a Quantas flight to Hong Kong, and then on to London. An over-efficient customs officer makes Bazza pay import duties on everything he bought over there, including a suitcase full of 'tubes of Fosters lager'. As he puts it: \"when it comes to fleecing you, the Poms have got the edge on the gyppos!\". A crafty taxi driver ( Bernard Spear ) maximises the fare by taking Bazza and Edna first to Stonehenge, then Scotland. The streets of London are filthy, and their hotel is a hovel run by a seedy landlord ( Spike Milligan ) who makes Bazza put pound notes in the electricity meter every twenty minutes. There is some good news for our hero though; he meets up with other Aussies in Earls Court, and Fosters is on sale in British pubs.<br /><br />What happens next is a series of comical escapades that take Bazza from starring in his own cigarette commercial, putting curry down his pants in the belief it is some form of aphrodisiac, a bizarre encounter with Dennis Price as an upper-class pervert who loves being spanked while wearing a schoolboy's uniform, a Young Conservative dance in Rickmansworth to a charity rock concert where his song about 'chundering' ( vomiting ) almost makes him an international star, and finally to the B.B.C. T.V. Centre where he pulls his pants down on a live talk-show hosted by the thinking man's crumpet herself, Joan Bakewell. A fire breaks out, and Bazza's friends come to the rescue - downing cans of Fosters, they urinate on the flames en masse.<br /><br />This is a far cry from Bruce Beresford's later works - 'Breaker Morant' and 'Driving Miss Daisy'. On release, it was savaged by critics for being too 'vulgar'. Well, yes, it is, but it is also great non-P.C. fun. 'Bazza' is a disgusting creation, but his zest for life is unmistakable, you cannot help but like the guy. His various euphemisms for urinating ( 'point Percy at the porcelain' ) and vomiting ( 'the Technicolour yawn' ) have passed into the English language without a lot of people knowing where they came from. Other guest stars include Dick Bentley ( as a detective who chases Bazza everywhere ), Peter Cook, Julie Covington ( later to star in 'Rock Follies' ), and even future arts presenter Russell Davies.<br /><br />A sequel - the wonderfully-named 'Barry McKenzie Holds His Own - came out two years later. At its premiere, Humphries took the opportunity to blast the critics who had savaged the first film. Good for him.<br /><br />What must have been of greater concern to him, though, was the release of 'Crocodile Dundee' in 1985. It also featured a lanky, hat-wearing Aussie struggling to come to terms with a foreign culture. And made tonnes more money.<br /><br />The song on the end credits ( performed by Snacka Fitzgibbon ) is magnificent. You have a love a lyric that includes the line: \"If you want to send your sister in a frenzy, introduce her to Barry McKenzie!\". Time to end this review. I have to go the dunny to shake hands with the unemployed...",
+  "This film and it's sequel Barry Mckenzie holds his own, are the two greatest comedies to ever be produced. A great story a young Aussie bloke travels to england to claim his inheritance and meets up with his mates, who are just as loveable and innocent as he is.<br /><br />It's chock a block full of great, sayings , where else could you find someone who needs a drink so bad that he's as dry as a dead dingoes donger? great characters, top acting, and it's got great sheilas and more Fosters consumption then any other three films put together. Top notch.<br /><br />And some of the funniest songs you'll ever hear, and it's full of great celebrities. Definitely my two favourite films of all time, I watch them at least once a fortnight."
+]
+
+vec_our_reviews =
+  our_reviews
+  |> Test.BagOfWords.transform(vocab)
+```
+
+```elixir
+require Axon
+
+yhat = Axon.predict(model, final_params[:params], vec_our_reviews)
+```
+
+```elixir
+yhat |> Nx.argmax(axis: 1)
+```

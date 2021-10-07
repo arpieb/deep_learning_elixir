@@ -1,0 +1,943 @@
+<!-- livebook:{"persist_outputs":true} -->
+
+# IMDB Reviews Classification - Conv1D
+
+## Load deps
+
+<!-- livebook:{"disable_formatting":true} -->
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.1.0-dev", github: "elixir-nx/nx", sparse: "nx", override: true},
+    {:exla, "~> 0.1.0-dev", github: "elixir-nx/nx", sparse: "exla", override: true},
+    {:axon, "~> 0.1.0-dev", github: "elixir-nx/axon", branch: "main"},
+    {:scidata, "~> 0.1.2"},
+    {:nltex, "~> 0.1.0-dev", github: "arpieb/nltex", branch: "master", override: true}
+  ] , force: true
+)
+```
+
+```output
+* Getting nx (https://github.com/elixir-nx/nx.git)
+remote: Enumerating objects: 10104, done.        
+remote: Counting objects: 100% (2500/2500), done.        
+remote: Compressing objects: 100% (1162/1162), done.        
+remote: Total 10104 (delta 1530), reused 2126 (delta 1251), pack-reused 7604        
+Receiving objects: 100% (10104/10104), 2.81 MiB | 6.09 MiB/s, done.
+Resolving deltas: 100% (6587/6587), done.
+origin/HEAD set to main
+* Getting exla (https://github.com/elixir-nx/nx.git)
+remote: Enumerating objects: 10104, done.        
+remote: Counting objects: 100% (2500/2500), done.        
+remote: Compressing objects: 100% (1162/1162), done.        
+remote: Total 10104 (delta 1530), reused 2126 (delta 1251), pack-reused 7604        
+Receiving objects: 100% (10104/10104), 2.81 MiB | 6.14 MiB/s, done.
+Resolving deltas: 100% (6587/6587), done.
+origin/HEAD set to main
+* Getting axon (https://github.com/elixir-nx/axon.git - origin/main)
+remote: Enumerating objects: 1727, done.        
+remote: Counting objects: 100% (903/903), done.        
+remote: Compressing objects: 100% (479/479), done.        
+remote: Total 1727 (delta 632), reused 640 (delta 414), pack-reused 824        
+Receiving objects: 100% (1727/1727), 3.19 MiB | 5.09 MiB/s, done.
+Resolving deltas: 100% (1090/1090), done.
+* Getting nltex (https://github.com/arpieb/nltex.git - origin/master)
+remote: Enumerating objects: 211, done.        
+remote: Counting objects: 100% (211/211), done.        
+remote: Compressing objects: 100% (138/138), done.        
+remote: Total 211 (delta 85), reused 177 (delta 53), pack-reused 0        
+Receiving objects: 100% (211/211), 214.21 KiB | 2.41 MiB/s, done.
+Resolving deltas: 100% (85/85), done.
+Resolving Hex dependencies...
+Dependency resolution completed:
+New:
+  elixir_make 0.6.2
+  scidata 0.1.2
+  table_rex 3.1.1
+  xla 0.2.0
+* Getting scidata (Hex package)
+* Getting table_rex (Hex package)
+* Getting xla (Hex package)
+* Getting elixir_make (Hex package)
+==> scidata
+Compiling 6 files (.ex)
+Generated scidata app
+==> nx
+Compiling 20 files (.ex)
+Generated nx app
+==> elixir_make
+Compiling 1 file (.ex)
+Generated elixir_make app
+==> xla
+Compiling 2 files (.ex)
+Generated xla app
+==> exla
+Unpacking /home/rbates/.cache/xla/0.2.0/cache/download/xla_extension-x86_64-linux-cuda111.tar.gz into /home/rbates/.cache/mix/installs/elixir-1.12.2-erts-12.0.3/872f851f9010b4d68f6b9afa4ab8bc5c/deps/exla/exla/cache
+mkdir -p /home/rbates/.cache/mix/installs/elixir-1.12.2-erts-12.0.3/872f851f9010b4d68f6b9afa4ab8bc5c/_build/dev/lib/exla/priv
+ln -sf /home/rbates/.cache/mix/installs/elixir-1.12.2-erts-12.0.3/872f851f9010b4d68f6b9afa4ab8bc5c/deps/exla/exla/cache/xla_extension/lib /home/rbates/.cache/mix/installs/elixir-1.12.2-erts-12.0.3/872f851f9010b4d68f6b9afa4ab8bc5c/_build/dev/lib/exla/priv/lib
+g++ -fPIC -I/usr/lib/erlang/erts-12.0.3/include -isystem cache/xla_extension/include -O3 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-comment -shared -std=c++14 c_src/exla/exla.cc c_src/exla/exla_nif_util.cc c_src/exla/exla_client.cc -o /home/rbates/.cache/mix/installs/elixir-1.12.2-erts-12.0.3/872f851f9010b4d68f6b9afa4ab8bc5c/_build/dev/lib/exla/priv/libexla.so -L/home/rbates/.cache/mix/installs/elixir-1.12.2-erts-12.0.3/872f851f9010b4d68f6b9afa4ab8bc5c/_build/dev/lib/exla/priv/lib -lxla_extension -Wl,-rpath,'$ORIGIN/lib'
+In file included from c_src/exla/exla.cc:5:
+c_src/exla/exla_log_sink.h: In member function ‘virtual void exla::ExlaLogSink::Send(const tensorflow::TFLogEntry&)’:
+c_src/exla/exla_log_sink.h:74:14: warning: ‘msg’ may be used uninitialized in this function [-Wmaybe-uninitialized]
+   74 |     enif_send(env_, &sink_pid_, NULL, msg);
+      |     ~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+c_src/exla/exla_client.cc: In function ‘tensorflow::StatusOr<std::vector<exla::ExlaBuffer*> > exla::UnpackRunArguments(ErlNifEnv*, ERL_NIF_TERM, exla::ExlaClient*, int)’:
+c_src/exla/exla_client.cc:89:19: warning: redundant move in return statement [-Wredundant-move]
+   89 |   return std::move(arg_buffers);
+      |          ~~~~~~~~~^~~~~~~~~~~~~
+c_src/exla/exla_client.cc:89:19: note: remove ‘std::move’ call
+In file included from c_src/exla/exla_client.cc:1:
+c_src/exla/exla_client.h: In constructor ‘exla::ExlaExecutable::ExlaExecutable(std::unique_ptr<xla::PjRtExecutable>, absl::lts_20210324::optional<std::__cxx11::basic_string<char> >, exla::ExlaClient*)’:
+c_src/exla/exla_client.h:67:31: warning: ‘exla::ExlaExecutable::fingerprint_’ will be initialized after [-Wreorder]
+   67 |   absl::optional<std::string> fingerprint_;
+      |                               ^~~~~~~~~~~~
+c_src/exla/exla_client.h:66:15: warning:   ‘exla::ExlaClient* exla::ExlaExecutable::client_’ [-Wreorder]
+   66 |   ExlaClient* client_;
+      |               ^~~~~~~
+c_src/exla/exla_client.cc:109:1: warning:   when initialized here [-Wreorder]
+  109 | ExlaExecutable::ExlaExecutable(std::unique_ptr<xla::PjRtExecutable> executable,
+      | ^~~~~~~~~~~~~~
+Compiling 15 files (.ex)
+Generated exla app
+==> nltex
+Compiling 8 files (.ex)
+Generated nltex app
+==> table_rex
+Compiling 7 files (.ex)
+Generated table_rex app
+==> axon
+Compiling 21 files (.ex)
+Generated axon app
+```
+
+```output
+:ok
+```
+
+```elixir
+Application.put_env(:exla, :clients, default: [platform: :host])
+```
+
+```output
+:ok
+```
+
+## Retrieve IMDB movie reviews
+
+```elixir
+reviews = Scidata.IMDBReviews.download()
+```
+
+```output
+%{
+  review: [
+    "The story centers around Barry McKenzie who must go to England if he wishes to claim his inheritance. Being about the grossest Aussie shearer ever to set foot outside this great Nation of ours there is something of a culture clash and much fun and games ensue. The songs of Barry McKenzie(Barry Crocker) are highlights.",
+    "'The Adventures Of Barry McKenzie' started life as a satirical comic strip in 'Private Eye', written by Barry Humphries and based on an idea by Peter Cook. McKenzie ( 'Bazza' to his friends ) is a lanky, loud, hat-wearing Australian whose two main interests in life are sex ( despite never having had any ) and Fosters lager. In 1972, he found his way to the big screen for the first of two outings. It must have been tempting for Humphries to cast himself as 'Bazza', but he wisely left the job to Barry Crocker ( later to sing the theme to the television soap opera 'Neighbours'! ). Humphries instead played multiple roles in true Peter Sellers fashion, most notably Bazza's overbearing Aunt 'Edna Everage' ( this was before she became a Dame ).<br /><br />You know this is not going to be 'The Importance Of Being Ernest' when its censorship classification N.P.A. stands for 'No Poofters Allowed'. Pom-hating Bazza is told by a Sydney solicitor that in order to inherit a share in his father's will he must go to England to absorb British culture. With Aunt Edna in tow, he catches a Quantas flight to Hong Kong, and then on to London. An over-efficient customs officer makes Bazza pay import duties on everything he bought over there, including a suitcase full of 'tubes of Fosters lager'. As he puts it: \"when it comes to fleecing you, the Poms have got the edge on the gyppos!\". A crafty taxi driver ( Bernard Spear ) maximises the fare by taking Bazza and Edna first to Stonehenge, then Scotland. The streets of London are filthy, and their hotel is a hovel run by a seedy landlord ( Spike Milligan ) who makes Bazza put pound notes in the electricity meter every twenty minutes. There is some good news for our hero though; he meets up with other Aussies in Earls Court, and Fosters is on sale in British pubs.<br /><br />What happens next is a series of comical escapades that take Bazza from starring in his own cigarette commercial, putting curry down his pants in the belief it is some form of aphrodisiac, a bizarre encounter with Dennis Price as an upper-class pervert who loves being spanked while wearing a schoolboy's uniform, a Young Conservative dance in Rickmansworth to a charity rock concert where his song about 'chundering' ( vomiting ) almost makes him an international star, and finally to the B.B.C. T.V. Centre where he pulls his pants down on a live talk-show hosted by the thinking man's crumpet herself, Joan Bakewell. A fire breaks out, and Bazza's friends come to the rescue - downing cans of Fosters, they urinate on the flames en masse.<br /><br />This is a far cry from Bruce Beresford's later works - 'Breaker Morant' and 'Driving Miss Daisy'. On release, it was savaged by critics for being too 'vulgar'. Well, yes, it is, but it is also great non-P.C. fun. 'Bazza' is a disgusting creation, but his zest for life is unmistakable, you cannot help but like the guy. His various euphemisms for urinating ( 'point Percy at the porcelain' ) and vomiting ( 'the Technicolour yawn' ) have passed into the English language without a lot of people knowing where they came from. Other guest stars include Dick Bentley ( as a detective who chases Bazza everywhere ), Peter Cook, Julie Covington ( later to star in 'Rock Follies' ), and even future arts presenter Russell Davies.<br /><br />A sequel - the wonderfully-named 'Barry McKenzie Holds His Own - came out two years later. At its premiere, Humphries took the opportunity to blast the critics who had savaged the first film. Good for him.<br /><br />What must have been of greater concern to him, though, was the release of 'Crocodile Dundee' in 1985. It also featured a lanky, hat-wearing Aussie struggling to come to terms with a foreign culture. And made tonnes more money.<br /><br />The song on the end credits ( performed by Snacka Fitzgibbon ) is magnificent. You have a love a lyric that includes the line: \"If you want to send your sister in a frenzy, introduce her to Barry McKenzie!\". Time to end this review. I have to go the dunny to shake hands with the unemployed...",
+    "This film and it's sequel Barry Mckenzie holds his own, are the two greatest comedies to ever be produced. A great story a young Aussie bloke travels to england to claim his inheritance and meets up with his mates, who are just as loveable and innocent as he is.<br /><br />It's chock a block full of great, sayings , where else could you find someone who needs a drink so bad that he's as dry as a dead dingoes donger? great characters, top acting, and it's got great sheilas and more Fosters consumption then any other three films put together. Top notch.<br /><br />And some of the funniest songs you'll ever hear, and it's full of great celebrities. Definitely my two favourite films of all time, I watch them at least once a fortnight.",
+    "I love this movie like no other. Another time I will try to explain its virtues to the uninitiated, but for the moment let me quote a few of pieces the remarkable dialogue, which, please remember, is all tongue in cheek. Aussies and Poms will understand, everyone else-well?<br /><br />(title song lyric)\"he can sink a beer, he can pick a queer, in his latest double-breasted Bondi gear.\"<br /><br />(another song lyric) \"All pommies are bastards, bastards, or worse, and England is the a**e-hole of the universe.\"<br /><br />(during a television interview on an \"arty program\"): Mr Mackenzie what artists have impressed you most since you've been in England? (Barry's response)Flamin' bull-artists!<br /><br />(while chatting up a naive young pom girl): Mr Mackenzie, I suppose you have hordes of Aboriginal servants back in Australia? (Barry's response) Abos? I've never seen an Abo in me life. Mum does most of the solid yacca (ie hard work) round our place.<br /><br />This is just a taste of the hilarious farce of this bonser Aussie flick. If you can get a copy of it, watch and enjoy.",
+    "A hit at the time but now better categorised as an Australian cult film. The humour is broad, unsubtle and, in the final scene where a BBC studio fire is extinguished by urinating on it, crude. Contains just about every cliche about the traditional Australian pilgrimage to 'the old country', and every cliche about those rapacious, stuck up, whinging, Tory Brits. Would be acceptable to the British because of its strong cast of well known actors, and to Australians of that generation, who can 'get' the humour. Americans -- forget it. The language and jokes are in the Australian dialect of English and as such will be unintelligible.",
+    "Very smart, sometimes shocking, I just love it. It shoved one more side of David's brilliant talent. He impressed me greatly! David is the best. The movie captivates your attention for every second.",
+    "With the mixed reviews this got I wasn't expecting too much, and was pleasantly surprised. It's a very entertaining small crime film with interesting characters, excellent portrayals, writing that's breezy without being glib, and a good pace. It looks good too, in a funky way. Apparently people either like this movie or just hate it, and I'm one who liked it.",
+    "This movie really kicked some ass. I watched it over and over and it never got boring. Angelina Jolie really kicked some ass in the movie, you should see the movie, you won't be disappointed. And another reason you should see the movie is because the guy from The X-Files is in it, David Duchovny.",
+    "I'd always wanted David Duchovney to go into the movie business, and finally he did, and he made me proud. This movie lived up to what I had hoped for. Duchovney played his character very well, managing to remain consistent with something new, instead of playing the Agent Molder we are used to. Therefore, I give him extra credit for his role, also because I could not see anyone else playing that particular character. David was great, but nothing compared to the psychotic Timothy Hutton. A brilliant performance that you don't get tired of throughout the movie, because he never fails to surprise you. He has weaknesses, and strengths, making the story all the more believable. I also very much enjoyed the narration, it added to the story a good deal, and had some very memorable quotes that i still use to all the time. This movie also had a wounderfull score. I recomend this for anyone who likes drama, and doesn't mind blood.",
+    "Like I said its a hidden surprise. It well written well acted and well cast. I liked everything in this movie. Look its Hollywood all right but the brighter side. Angelina Jolie is great in this and I'm totally watching every movie with her in that I can get my hands on. Well worth a look.",
+    "David Duchovney creates a role that he was to replicate somewhat in Californication - the troubled talent. And it is a role he plays well.<br /><br />This thriller starts off at a good speed and carries you through to the end. Timothy Hutton plays a fine villain and Angelina Jolie pouts. The story of a disgraced doctor finding his way into a criminal world is well scripted. Drug addiction and a desire for the sultry Jolie mix a heady cocktail. Unfortunately towards the end the story gets a little weaker and the relationships between villains and the FBI is muddled and rushed as if it was created only to develop the final scene. But, that aside, a movie worth seeing.",
+    "This film has a lot of raw potential. The script is sharp, the dialogue is (usually) excellent (though it could stand to lose the cheezy voice-overs), the direction and cinematography is surprisingly quite good, though some of the experimentation just doesn't work. The main problem here is David Duchovny. Once a geek-boy, always a geek-boy; and the sad, simple fact is that he's incapable of playing anything but Fox Mulder. He postures, he tries to be slick, he poses, he tries to be macho. In the end he just tries too hard. He overplays his character, he overspeaks his lines, and he's just outplayed in all ways by Timothy Hutton and Angelina Jolie, who are each in a class above him in terms of acting skill. Timothy Hutton was (as always) really good. There was a spotty moment or two where he over-dramatized his role, but you could tell he was having fun with it. He looked the part, and he became the character both physically and atmospherically. Angelina Jolie was also really good. She didn't have much of a role; in fact, I though she could have used a much stronger one...her character wasn't nearly developed enough, though she did remarkably well with what she had. And the chemistry between her and Hutton was apparent (gee, maybe that's why Uma left him...;) All in all, it was rough around the edges, but a solid effort by a good cast and great supporting roles. If David Duchovny hadn't ripped his role to pieces it would've been *that* much better. 7/10.",
+    "I enjoyed this movie. Unlike like some of the pumped up, steroid trash that is passed off as action movies, Playing God is simple and realistic, with characters that are believable, action that is not over the top and enough twists and turns to keep you interested until the end.<br /><br />Well directed, well acted and a good story.",
+    "David Duchovny plays the lead role in this film.Now a lot of people upon finding that fact out wouldn't even bother watching it.Very unfair to say the least.David made his name on the x-files and is a decent actor. Dr Eugene Sands(Duchovny)is a drug addicted doctor struck off for malpractice.By sheer accident he becomes a private doctor for criminal millionaire Raymond Blossom.However the FBI take an interest in using Eugene to snare Blossom. Angelina Jolie is cast in the supporting role of clare-the gangsters moll.She puts in a solid performance. Timothy Hutton playing Blossom is superb and immersed himself deeply into his character. Duchovny himself isn't as bad as many people would think and in the end i would rate his performance his credible.His familiar monotonous tone and straight face is present but dosen't detract too much from the film",
+    "Normally, I don't watch action movies because of the fact that they are usually all pretty similar. This movie did have many stereotypical action movie scenes, but the characters and the originality of the film's premise made it much easier to watch. David Duchovny bended his normal acting approach, which was great to see. Angelina Jolie, of course, was beautiful and did great acting. Great cast all together. A must see for people bored with the same old action movie.",
+    "Okay, truthfully, I saw the previews for this movie and thought to myself, what are the producers thinking? Hutton, Jolie, and DUCHOVNY? How could the monotoned actor possibly compete with Jolie's natural power on the screen? But surprisingly, the two had the kind of chemistry that showed intense caring without a kiss. Even David's humor matched up to Jolie's spark and fire. As for Hutton, he played the psycho very well, contrasting with David's calm delivery of life threatening situations. Overall, I was very impressed with the writing and character development. I gave it 8 stars.",
+    "I was expecting this to be the same kind of schlock as the previous Modesty Blaise movie, which is why I left it unwatched for so long, but I was very pleasantly surprised.<br /><br />Far from being a succession of silly gun battles and car/boat chases, it was an almost thoughtful analysis of how a pretty girl gets to become as hard as nails, with nothing being overstated or over-rationalized.<br /><br />It's likely that the budgetary constraints actually helped with that: less time and effort was spent on finding ever-stupider ways for stunt men to pretend to die, and more was dedicated to making the movie worth watching. Hell, the biggest gun battle takes place off screen -- and the scene where it is heard is all the better for that background noise, that adds to the suspense -- who's winning? Who's dying?<br /><br />Alexandra Staden might not be as drop-dead gorgeous as Monica Vitti, but few are, and she certainly has every ounce of class and fire that's needed to make the character work -- and the shape of her face, her hair, and her tall, slender body could have been lifted straight from the comic-strip graphics.<br /><br />Nikolaj Coaster-Waldau was the perfect choice for a Blaise bad-guy, in that he made the character interesting and enjoyable to watch -- even likable (and I doubt I'd consider taking on many brutal, psychopathic murderers as drinking buddies). I can't think of a single one of Hollywood's \"former waiters\" who could have pulled the role off that well.<br /><br />Fortunately, Blaise baddies always die, in the end (no spoilers there!) That's a really good thing, because all the girls who would have spent their time swooning over such a disgustingly handsome and interesting hunk can now pragmatically settle for us ordinary Joes.",
+    "This is a good movie, although people unfamiliar with the Modesty Blaise comics and books may find it a little slow and lacking in action. For the Modesty fan, the movie will be very enjoyable, particularly because it is very faithful in its presentation of the Modesty Blaise \"history\". Peter O'Donnell is listed in the credits as \"Creative Consultant\" and the film makers must have actually paid attention to him as the plot follows quite closely the details that have been presented in the comic books over the years {although the events have been recast to modern days). The only thing that the true fan may find disappointing is that there is no Willie Garvin in the story. This lack of Willie is again just being faithful to the Modesty Blaise chronology since the movie takes place in the very early days of Modesty's career. Alexandra Staden makes a very believable young Modesty who actually looks a lot like Modesty is supposed to look. A welcome change from the travesty of the Monica Vitti portrayal of Modesty.",
+    "For a first film in a proposed series it achieves the right balance. It is done with style and class showing Modesty's early days as a refugee and the start of her rise to power in the criminal world. I think it is a very honest/true portrayal of her character exactly as the writer Peter O'Donnell intended. Alexandra Staden as Modesty is stunningly beautiful and an excellent choice. She acts very convincingly as the tough survivor with an exterior of cool/intelligent/innocence. And full marks to Tarantino for choosing an unknown actress for the role - much more believeable to have a new face creating the part. I'm looking forward to the next film.",
+    "I was pleased to see that she had black hair! I've been a fan for about 30 years now and have been disgusted at the two earlier attempts to film the stories.<br /><br />I was pleased that the screenwriters updated the period to include a computer, it didn't spoil it at all. In fact I watched the film twice in one day, a sure sign that it was up to standard. This is what I do with books that I like as well.<br /><br />I thought all the characters were well depicted and represented the early days of Modesty Blaise extremely well as evinced in both book and comic strip. I would also have to disagree with a comment made by an earlier reviewer about baddies having to be ugly. Has he actually read the books?<br /><br />I thought this was a very good film and look forward to sequels with anticipation.",
+    "I have read modesty Blaise for several years now, collecting numbers of the strip. After the fiasco movie made many years ago based on the first book \"Modesty Blaise\" I was surprised the result got this good.<br /><br />What I got was a movie not based on action or violence. The director had focused on history and psychology. How was Modesty created based on the own tale and what parts in her life was affected by her non-childhood. I think this thougths will give a greater understanding to the next (I hope) film. I simply loved the movies old-fashioned style.<br /><br />However everything wasn't that good, the gambling wasn't that good. almost boring and unreal. The acting could have been improved too. I'm not thinking the bad guy in this movie felt real, the only reason he was there was so Modesty could have someone to tell her story for. Also they could have expanded the movie, showing more about when she builds up \"The network\" but I'll guess thats for the next movie.<br /><br />And please forgive me for my bad English",
+    "As a long time fan of Peter O'Donnell's greatest creation, I watched this film on DVD with no great hopes of enjoyment; indeed I expected to be reaching in disgust for the remote control within fifteen minutes. But instead I thoroughly enjoyed this production, and I especially enjoyed and appreciated how the producers and director succeeded in telling the Modesty Blaise back story. They managed to avoid the trap of making a (bad) film version of the books we are all so familiar with, choosing instead to concentrate on a period in Modesty's life only alluded to in the novels.<br /><br />As for the production values (and I am no student of cinematography!): yes, the film was filmed on a tight financial and time budget and maybe that shows... but does it spoil the viewer's enjoyment? In this case I think not. Instead we are introduced to one of the world's greatest literary heroines and given a taste of her capabilities.<br /><br />In regard to the casting: because we in unfamiliar territory the only people who really matter are Modesty and (perhaps) Professor Lob. For me they were totally credible. Alexandra Staden, described by some as wooden, and too thin to be an action heroine, brought to the screen Modesty's poise and coolness; her technique (when martial arts were needed) but most importantly personified the integrity which is at the core of the Modesty Blaise canon.<br /><br />OK, so we all know this film was produced to stake Miramax's claim to the Modesty Blaise character, it was made quickly and cheaply, BUT... I for one cannot wait to see the next production in this series by these producers - as long as they keep to the core values and characterisations of the original stories!",
+    "The movie was a long awaited release, which where a bit disappointing because of the expectation's I had set up. When looking at it again I must say it is actually pretty OK. First of all is it very true to the original history (of course not completely) and is as such only made to keep the right for the movie. Modesty's history as a child is shown and is very true to the original. The acting is perhaps not the best around and the plot is a bit thin, but when you compare it to the 1966 Vitti movie is way better just because it is not trying to be a musical. Generally would I only recommend it to fans of Modesty Blaise or to someone who by catch it on the TV.",
+    "While the main story is supposed to take place in Morocco, this movie was shot in foggy Romania in 18 days on a very tight budget. However broken their cards may be, the actors and the crew play them with remarkable skill and commitment, so that in the end I found the result both touching and graceful. Nikolaj Coaster-Waldau provides a formidable performance as the bad guy. The script and direction provide some gems. Whether you will like the movie or not, however, will probably depend on your take on Alexandra Staden in the title role. Other reviewers have pointed out Staden's inadequacies as Modesty Blaise. They may have a point, but I found her interpretation delightful and very fitting. Modesty manages to overcome terrible odds through discipline, innate talent and courage. Staden appears to be doing the same here.",
+    "Recap: It's business as usual at Louche's casino in Tanger. The casino is about to close and prepares for a big transaction the next day. The owner Louche and some staff leave for the night, leaving Modesty in charge. Suddenly a troop of armed gangsters storm the casino, shooting wildly. Unknown to Modesty, they have already killed Louche, and are now after the money hidden in the vault. But no one present, and still alive, at the casino knows the code to open the vault. The vault itself is heavily booby trapped with explosives so the assailants can't blow the door as planned. Suddenly Modesty finds herself eye to eye with the gangsters' leader Miklos in a game of roulette with their lives in jeopardy.<br /><br />Comments: This is a review written with no connection what so ever with other published media about Modesty Blaise, as I have neither seen nor read any of it. The first point I like to make is that this is slightly wrongfully classified. Foremost I thought this was a thriller with a battle of wits between Modesty and Miklos as the main plot. Sure, there are some bursts of action but they are not really an integral or important part of the story.<br /><br />As already mentioned the main plot and the main suspense-filled scene, is the game between Modesty and Miklos. It's an innovative and intriguing way of revealing the background of a character, and in doing so much of the story takes place outside the casino at a much earlier time. Someone said that it is almost like a pilot for a TV-series, and the feeling is that it might indeed be used as such. But, I felt it was a much better way to introduce a character than many other have done. I was in no way disappointed in the lack of action, instead I enjoyed this game, the history much more than a simple action movie.<br /><br />I think the two main stars, Alexandra Staden and Nikolaj Coaster-Waldau did very well. Staden especially portrays Modesty very well, and really carries this confident and talented character.<br /><br />7/10",
+    "This was the Modesty that we didn't know! It was hinted at and summarized in the comic strip for the syndicates to sell to newspapers! Lee and Janet Batchler were true Modesty Blaise fans who were given The Dream Job - tell a prequel story of Modesty that the fans never saw before. In their audio-commentary, they admitted that that they made changes in her origin to make the story run smoother. The \"purists\" should also note that we really don't know if everything she told Miklos was true because she was \"stalling for time.\" I didn't rent or borrow the DVD like other \"reviewers\" did, I bought it! And I don't want a refund! I watched it three times and I didn't sleep through it! Great dialog and well-drawn characters that I cared about (even bad guy Miklos) just like in the novels and comic strips! I too can't wait for the next Modesty (and Willie) film,especially if this \"prequel\" is a sign of what's to come!",
+    "Shot on an impossible schedule and no budget to speak of, the movie turned out a lot better than you would expect, certainly much more true to the Peter O'Donnell books and comic strip than the previous two films. You can read the strip currently in the reprints from Titan Books, or in Comics Revue monthly. It is one of the greatest adventure comic strips of all time. The movie isn't great, but unlike most low budget films it makes the most of what its got, and it holds your interest. On the DVD extras, the interview with Quentin Tarentino, who is obviously stoned, is a gas. Some people have faulted Tarentino for associating his name with the film, but without him it would never have been made. He is a Modesty Blaise fan, and picked a good writer and director. All things considered, worth 8 stars.",
+    "I enjoyed this film. It was a joy to see a version so close to the vision of Peter O'Donnell.<br /><br />A number of people have disliked the film, but it has to be seen in context of the origin story that it is. The film uses flashback to show the young Modesty and the events that shaped her into the woman that she became. Before the Network. Before Willie Garvin.<br /><br />The pace is a trifle slow, and for my taste not enough tension is developed in the present day scenes. However this is acceptable just to get such a faithful version.<br /><br />If you like Modesty Blaise, you will enjoy it even with its faults, if you just want an action flick with car chases - forget it.<br /><br />It has the feeling of being the first of a franchise, but as I have never seen it promoted anywhere, I suspect there will be no more to follow. Sadly.",
+    "The best Modesty Blaise movie I have seen so far. It's like a good pilot for a TV-series. I even think it's a little bit \"cult\", like with a lite touch of Quentin Tarantino's magic, or something. They have caught a great deal of Modesty's character, but I admit missing Willy Garwin a bit. Even if i have read many comics and book by Peter O'donnell I'm not disappointed of this film, quite the opposite. Positive surprised of this story about Modesty and her childhood. I did not put my expectations so high, because of the bad movie from 1966. So I may have overrate this movie just a little. But if you like the comics and other storys about Modesty Blaise, you should definitely see this one! can't wait for a follow-up...",
+    "I've seen this movie and I must say I'm very impressed. There are not much movies I like, but I do like this one. You should see this movie by yourself and comment it,because this is one of my most favorite movie. I fancy to see this again. Action fused with a fantastic story. Very impressing. I like Modesty's character. Actually she's very mystic and mysterious (I DO like that^^). The bad boy is pretty too. Well, actually this whole movie is rare in 'movieworld'. I considered about the vote of this movie, I thought this is should be a very popular movie. I guess wrong. It was ME who was very impressed about this movie, and I hope I'm not the only one who takes only the cost to watch this one. See and vote.",
+    "Having heard of Modesty Blaise before, but never having read a novel or a comic strip, my wife and I liked the film a lot. It delivered, in a captivating way, a good introduction to the character and her background.<br /><br />Although it has some action flick elements, it is much more an intimate play, excellently written. Sadly, this is also, where a major drawback of the movie is revealed. An intimate play lives on the capabilities of its actors and unfortunately only half of the cast delivered. While Alexandra Staden did an excellent job as Modesty Blaise, her counterpart Nikolaj Coaster-Waldau - as the villain Miklos - did not. Smiling his way through the plot as if it is an extend toothpaste commercial, he fails to build up an atmosphere of anxiety that would have made the movie a masterpiece. The supporting cast is somehow similar, from some stereotyped gangsters and sluts to decent performances from Fred Pearson as Professor Lob and Eugenia Yuan as Irina.",
+    "There's a great deal of material from the Modesty Blaise comics and novels that would be great in a movie. Unfortunately, several attempts have been made and they've fallen short of the great potential in the character. So, no, this isn't the Modesty you know from the comic strip (currently reprinted in nice editions from Titan Books). This is Modesty some 5 or 6 years prior to the first strip, and from what you can piece together from her back-story, it's accurate.<br /><br />Miramax had the movie rights to the character, with Quentin Tarantino acting as advocate and technical adviser. Early drafts of the Miramax project attempted to adapt one of the best novels, but always managed to leave out some crucial element. Tarantino wasn't happy with any of them, and offered to remove his name from the project so they could proceed. To the studio's credit, they wanted to keep him in the process, since they knew he \"got\" the character and her world. With the movie rights close to expiration, they decided to try a very different approach. The result was \"My Name is Modesty,\" a small direct-to-video movie that introduces the character.<br /><br />The movie does not introduce Willie Garvin or Sir Gerald. These characters are important to Blaise's adventures throughout most of the published stories. What this movie accomplishes is showing the strength of the character by herself. She never loses her composure, and you never doubt that she's in charge even unarmed in a room full of gangsters with guns. Most of the movie takes place within a casino, which undoubtedly saved money on the production. It doesn't matter. The film does not come across as cheap. Instead, it gives a fairly comprehensive (and believable) back-story for the character and demonstrates just how far she thinks ahead. Should Miramax adapt any of the comic stories or novels now, they've laid out the character's background nicely and won't have to spend much time on her \"origin.\" I realize the words \"Direct-to-Video\" don't inspire confidence, but this film is well worth a look.",
+    "First off; I'm a dedicated fan of Modesty's, and have been reading the comics since I was a child, and I have found the earlier movies about our heroine unsatisfying, but where they fail, this one ROCKS! <br /><br />Well then, here we go: Ms Blaise is working for a casino, a gang of robbers comes along and she starts gambling for her friends lives. If the robber wins one round, she'll have to tell him about herself. If she wins two times in a row, one of the staff members goes free. (Sounds stupid, yeah, well, I'm not that good at explaining either..) ;)<br /><br />She tells him about growing up in a war zone, without parents or friends, about her helping an old man in the refugee camp and how they escape, living by nature's own rules. They hunt for food, and he teaches her to read and fight. As they approach civilization they get caught up in a war, and as they are taken for rebellions, they are being shot at and the old man dies, which leaves her to meet the city by herself.<br /><br />Then she meets the man who's casino she's now working for, and there the story ends. <br /><br />What is to follow is that there's an awesome fight and the line's are totally cool. Alexandra Staden is a TERRIFIC Modesty Blaise! Just as modest and strong, graceful and intellectual as the comic-one.<br /><br />Feels awkward though, too hear Modesty speak with a slightly broken accent, but that's not relevant since the comic book- blaise can't speak out loud, but certainly must have a somewhat existing accent. (Not to mention that it's weird everybody's speaking English in the Balkan..)<br /><br />The acting is really good, even the child who personifies the young Blaise must have a applaud! <br /><br />My favorite part must be where she rips up her dress to kick the stupid robber's ass! Totally awesome! :D I can't wait until the real adventure begins in the next movie/s!<br /><br />Watch it, you won't be disappointed!",
+    "Finally was there released a good Modesty Blaise movie, which not only tells a story, but actually tells the \"real\" story. I admit that it is a bad movie if you expect an action thriller, but if you stop in your track and remove all your expectations. Then you will notice that it is a story that comes very close to the original made by Peter O'Donnell. You have a cover story just to tell about how Modesty became the magnificent person which she is. It is not a movie to attract new fans, but a movie to tell the real tale. Some things could have been better, but when you cannot forget the awful movie from '66 then is this a magnificent movie. So are you a fan then sit down relax and just enjoy that the real story is there with a cover story just to make Modesty tell her story.",
+    "Rented and watched this short (< 90 minutes) work. It's by far the best treatment Modesty has received on film -- and her creator, Peter O'Donnell, agrees, participating as a \"Creative Consultant.\" The character, and we who love her, are handled with respect. Spiegel's direction is the best he's done to date, and the casting was very well done. Alexandra Staden is almost physically perfect as a match to the original Jim Holdaway illustrations of Modesty. A terrific find by whoever cast her! Raymond Cruz as a young Rafael Garcia was also excellent. I hope that Tarantino & co. will go on to make more in the series -- I'm especially interested to see whom they'd choose to be the incomparable Willie Garvin!",
+    "Although I bought the DVD when it first came out, and have watched it several times, I never wrote a review.<br /><br />I loved it when I first saw it and I love it still.<br /><br />Sadly, it seems it never made enough money to motivate anyone to do a follow-up. I have to assume QT still controls the rights, but after Kill Bill if he does a film that is as true to the comics and books as My Name is Modesty, with another tough female lead, anyone not familiar with the character will see this as a let-down.<br /><br />Peter O'Donnell wrote his stories to focus more on psychological suspense rather than action thrillers.<br /><br />The tug of wills between Modesty and Miklos is very true to the source material and is tense, suspenseful and fascinating to anyone who doesn't have to have gore and explosions. Alexandra did a great job in playing how O'Donnell's character would have taken control of the situation.<br /><br />I find this particularly ahead of the curve following the sorely needed reboots of Batman and James Bond. After 2 dismal earlier efforts, although not nearly as well known to the public, this is really a reboot of the Modesty character, and it is really sad that probably no more films about her will be made.",
+    "If you are already a fan of Peter O'Donnell's wonderful Modesty Blaise books from the sixties, you will really enjoy this movie. If you have ever seen the 1966 \"Modesty Blaise\" film, forget it! That was camp. This is the real Modesty Blaise. The story and character are both true to the Modesty that fans of the books know and love. It's a long way from Joe Losey's 1966 travesty, and it takes our Modesty quite seriously. Alexandra Staden is quite good and believable in the part, and yes, we do get to see her kick butt. chuckle<br /><br />This is likely meant to be the first movie of a series and as such it serves to introduce Modesty, her childhood and her days with Lob.<br /><br />Since Peter O'Donnell was the creative consultant on the movie, everything really rings true. Even the story O'Donnell told of how he conceived the character is just as he told it. Having read all the books, I enjoyed the movie even more for that.<br /><br />Now that Miramax has kept their option on the property by having Quentin Tarrentino make this film, I do hope to see more of the Modesty stories asap. Especially as the wonderful character of Willie Garvin makes Modesty's character really come alive. To that end, I really hope the film does well in Europe. I have no idea if Miramax intends to ever distribute the DVD in the USA. I suspect it might not do that well in the USA in general distribution. I wonder how Miramax decides where and how to distribute it's films.<br /><br />In the story, Modesty is in her early 20's, working at Louche's casino in Tangier. The flashback sequences are artfully done and take Modesty from about 9 years old, through her teens up to her current age in the movie - about 21-22, I'd guess. I really don't think there's a \"perfect actress\" for Modesty. For many of us Modesty fans, she's much too powerful a presence in our imaginations already. Alexandra Staden is credible. She is very slim, graceful and poised. She has lots of closeups. She has a great face - one that sticks in your mind well after the movie is over. According to O' Donnell's illustrator, Romero, Modesty has rather a fuller figure than Staden, but I'm willing to overlook that. If Staden continues in the role, I think she will mature into it - just as Modesty grows more powerful and skilled as she gets older. Staden already conveys Modesty's humor and absolute assurance very well. Go ahead and rent this movie, it's not like anything else you've seen and even though it was directed by Scott Spiegel, it is full of Tarrentino touches, great camera moves, lighting and well-done action sequences.",
+    "Unfortunately many consumers who write reviews for IMDb equate low budget with not good. Whatever else this movie might need, more budget really isn't part of it. Big sets and lots of special effects would have turned it into another Lara Croft movie. What we have here is a step or two better than that.<br /><br />The nearly unknown Alexandra Staden is captivating as the enigmatic Modesty, and this is crucial for this movie to work. Her wise little smiles and knowing looks are formidable, and you find yourself wishing that the camera won't leaver her face. It makes it workable that the bad guy Nikolai, played by also little known (in the U.S. at least) Nikolaj Coaster-Waldau might take an unusually cerebral interest in her, something Modesty can exploit. She is able to divert his raping her with just a shove and spitting out \"stop wasting my time!\" then storming off between his heavily armed yet suddenly diffident henchmen. Making a scene like that plausible doesn't happen by accident.<br /><br />Probably the biggest problem I have with the rail-thin Staden playing Modesty is it just isn't very believable for her to go hand to hand with an athletic and muscled looking guy like Coaster-Waldau and beat him. She just ain't a Peta Wilson or a pumped-up Hilary Swank type actress who can throw a convincing punch. Coaster-Waldau letting himself be overpowered by Staden looks like he's just roughhousing with his little sister.<br /><br />Since this is not really an action film, this isn't a big flaw. I just hope they do better on that if and when they make sequels.",
+    "magellan33 said: \"You can only do so much when the two stars of the show can only be seen by one fellow cast member.\"<br /><br />I assume, then, that you never heard of \"Topper\".<br /><br />Which, in addition to the two stars who could only be seen by one member of the cast, had a dog, ditto.<br /><br />This was the kind of program that had \"Not Gonna Make It\" written allover it from the first episode - it was like an arcade video game where you actually have to read the instructions to play; no-one (well, very few of us, apparently) wants to watch a comedy program that has a basic premise that actually requires *thought* to grasp.",
+    "I used to watch this show when I was a little girl. Although I don't remember much about it, I must say that it was a pretty good show. Also, I don't think I've seen every episode. However, if you ask me, it was still a good show. I vaguely remember the theme song. Everyone was ideally cast, the costume design was great. The performances were top-grade, too. I just hope some network brings this series back one day so that I'll be able to see every episode. Before I wrap this up, I'd like to say that I'll always remember this show in my memory forever, even though I don't think I've seen every episode. Now, in conclusion, when and if this show is ever brought back on the air, I hope that you catch it one day before it goes off the air for good.",
+    "This movie is definately one of my favorite movies in it's kind. The interaction between respectable and morally strong characters is an ode to chivalry and the honor code amongst thieves and policemen. It treats themes like duty, guilt, word, manipulation and trust like few films have done and, unfortunately, none that I can recall since the death of the 'policial' in the late seventies. The sequence is delicious, down to the essential, living nothing out and thus leading the spectator into a masterful plot right and wrong without accessory eye catching and spectacular scenes that are often needed in lesser specimens of the genre in order to keep the audience awake. No such scenes are present or needed. The argument is sand honest to the spectator; An important asset in a genre that too often achieve suspense through the deception of the audience. No, this is not miss Marble... A note of congratulations for the music is in order A film to watch and savor every minute, not just to see.",
+    <<83, 104, 111, 114, 116, 32, 115, ...>>,
+    <<85, 116, 116, 101, 114, 108, ...>>,
+    "This movie is definately one of my favourite movies in it's kind. The interaction between respectable and morally uncorruptable characters is an ode to chivalry and the honour code amongst thieves and policemen. It treats themes like duty, guilt, word, manipulation and trust like few films have done and, unfortunately, none that I can recall since the death of the 'policial' in the late seventies. The sequence is delicious, down to the essential, living nothing out and thus leading the spectator into a masterful plot right and wrong without accessory eye catching and spectacular scenes that are often needed in lesser specimens of the genre in order to keep the audience awake. No such scenes are present or needed. The argument is flowless and honest to the spectator, wich is an important asset in a genre in wich the the suspense is often achieved through the betrail of the audience. No, this is not miss Marble... A note of congratulations for the music is in order A film to watch and savour every minute, not just to see.",
+    <<70, 97, 114, 101, ...>>,
+    "A clever script from the late SEBASTIAN JAPRISOT and smart performances from the two male leads - ALAIN DELON and CHARLES BRONSON (or should it be the other way around) result in an engaging and entertaining thriller.<br /><br />Add to the above the competent direction from veteran JEAN HERMAN and a sparse but effective score by FRANCOIS DE ROUBAIX, it becomes easy why this film has an odd timeless quality.<br /><br />This is a buddy buddy or bonding story with two loners, both disillusioned and world weary, returning, presumably from Algiers. Like the other colonial powers of this time (post WW II leading into the 60s), France had struggled to keep up appearances overseas. Losing Algiers was a bitter blow.<br /><br />ADIEU L'AMI (the original title) chronicles the actions of our two (anti) heroes as they struggle to make a go of it, after their discharge.<br /><br />One thing happens after another, and the viewer really has to pay attention, because JAPRISOT is lean and economical with his script: if it is there, then there must be a reason.<br /><br />Suffice to say, these two men battle it out, physically and psychologically, one long weekend. Their motivation is quite different, their goals are different - their survival depends entirely on each other. That ALAIN DELON and CHARLES BRONSON are outwardly so different - the former, arguably a pretty boy, and the latter an ugly thug, adds to the chemistry.<br /><br />That quest makes for a great story, which in turn, makes for a great film.<br /><br />Lest I forget there are women in this film, and true to the Japrisot method, they too are memorable, though not nearly as fleshed out; to say much more would be to spoil one's delight in discovering their true nature.<br /><br />FAREWELL, FRIEND HAS BEEN RELEASED IN THE UK; AN ANAMORPHIC IMAGE, 16.9 ENHANCED; IN English ONLY (not even subtitles for the hard of hearing); A RUNNING TIME OF 110 MINUTES; MONO SOUNDTRACK but the DE ROUBAIX music has lots of punch! <br /><br />Highly recommended.",
+    "Noni Hazlehurst's tour-de-force performance (which won her an AFI award) is at least on par with her effort in FRAN three years later. Colin Friels is also good, and, for those who are interested, Alice Garner appears as Noni's child, and Michael Caton (best known for THE CASTLE) is a bearded painter. (Also interestingly, Hazlehurst is currently the host of lifestyle program BETTER HOMES AND GARDENS, and Caton is the host of property-type programs including HOT PROPERTY, HOT AUCTION, etc...) This film reaffirms the popularly-held belief that Noni was arguably Australia's top female actor during the early-to-mid 1980s. Rating: 79/100.",
+    <<78, ...>>,
+    "Noni Hazlehurst, Colin Friels, Alice Garner, Chrissie Amphlett and Michael Caton- what more could you ask for? Monkey Grip based on the prize winning novel of the same name explores Nora (Hazlehurst, a single mother falling for a heroin addict Jobe (Friels). A simple story is made truly extraordinary through the all round magnificent acting (in particular Noni Hazlehurst) and nice use of the small budget. The only flaw is (if you can pick it up) is that the story is set in Melbourne, although for budget reasons, the film was mainly shot in Sydney, so as a result, in a few scenes you see trams (Melbourne scenes) and then a Carlton post office (Sydney scenes). Other than that, \"Monkey Grip\" is a must see (excuse the clique, but it is) at least for an award winning performance from former \"Play School\" and \"Better Homes & Gardens\" presenter Noni Hazlehurst.<br /><br />10/10",
+    ...
+  ],
+  sentiment: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...]
+}
+```
+
+```elixir
+IO.puts(length(reviews.review))
+IO.puts(length(reviews.sentiment))
+```
+
+```output
+25000
+25000
+```
+
+```output
+:ok
+```
+
+## Retrieve Stanford NLP's GloVe word vectors
+
+```elixir
+# Quick-n-dirty caching since apparently Stanford's data server doesn't honor the 
+# "If-Modified-Since" request header leveraged by Scidata.
+read_result =
+  File.open("/data/rbates/glove_6b_50d.bin", [:read, :binary], fn ifs ->
+    IO.binread(ifs, :all)
+    |> :erlang.binary_to_term()
+  end)
+
+w2v =
+  case read_result do
+    {:ok, data} ->
+      data
+
+    {:error, _} ->
+      data = NLTEx.WordVectors.GloVe.download(:glove_6b, 50)
+
+      File.open!("/data/rbates/glove_6b_50d.bin", [:write, :binary], fn ofs ->
+        IO.binwrite(ofs, data |> :erlang.term_to_binary())
+      end)
+  end
+```
+
+```output
+%NLTEx.WordVectors{
+  shape: {50},
+  wordvecs: %{
+    "ryota" => #Nx.Tensor<
+      f32[50]
+      [-0.15855999290943146, -1.2281999588012695, 0.779259979724884, 0.5184400081634521, 1.0612000226974487, -0.1960500031709671, 0.6488199830055237, 0.6339899897575378, -1.2811000347137451, -0.3729200065135956, -0.4132300019264221, 0.549809992313385, 1.0563000440597534, 0.20026999711990356, -0.34650999307632446, -0.7315499782562256, -0.28099000453948975, 1.1051000356674194, 0.7102699875831604, 0.5355100035667419, 0.04653099924325943, -1.177899956703186, 0.1552100032567978, -0.27254000306129456, -0.01066100038588047, 0.942330002784729, 1.1972999572753906, 0.2793999910354614, -0.265639990568161, -0.5888199806213379, -1.1050000190734863, -0.10181000083684921, 0.953540027141571, 0.762939989566803, -0.07272499799728394, 1.719499945640564, -0.35666999220848083, 0.31622999906539917, 0.42833998799324036, -0.4648500084877014, 0.3703399896621704, 0.14313000440597534, -0.6929399967193604, -0.47036999464035034, -0.16708000004291534, 0.24112999439239502, -0.4453999996185303, ...]
+>,
+    "niednagel" => #Nx.Tensor<
+      f32[50]
+      [0.36456000804901123, -0.8915200233459473, 0.5913400053977966, -0.06398899853229523, -0.24913999438285828, 0.5717800259590149, -0.03653800114989281, 0.5922300219535828, 0.2516799867153168, 0.26513999700546265, 0.4556100070476532, 0.12231999635696411, 0.16523000597953796, -0.08731900155544281, 0.3124299943447113, 0.15668000280857086, 0.03879600018262863, 0.2870500087738037, 0.637470006942749, 0.35583001375198364, -0.4029499888420105, -0.24195000529289246, 0.5671200156211853, 0.14545999467372894, 0.4569999873638153, 0.7985900044441223, 0.315420001745224, 0.04042400047183037, -0.23871999979019165, -0.26335999369621277, -1.1691999435424805, -0.6487799882888794, 0.32512998580932617, -0.10634999722242355, -0.1445399969816208, 0.29982998967170715, 0.2140199989080429, 0.26076000928878784, 0.4349600076675415, -0.01205699983984232, 0.3414199948310852, -0.397350013256073, -0.791920006275177, 0.18970000743865967, 0.5514199733734131, -0.7036700248718262, ...]
+>,
+    "gulas" => #Nx.Tensor<
+      f32[50]
+      [-0.09554100036621094, -0.786109983921051, -0.15460999310016632, -0.03172500059008598, -0.13899999856948853, 0.2054699957370758, -0.49474000930786133, 0.5801500082015991, -0.44078001379966736, -0.35005998611450195, 0.3802100121974945, 0.3638699948787689, -0.8424000144004822, -0.16496999561786652, -0.39610999822616577, 0.42566001415252686, 0.30028998851776123, -0.5578299760818481, 0.527899980545044, 0.21060000360012054, -0.5791800022125244, 0.8315799832344055, -0.9804700016975403, 0.08849900215864182, 0.3240799903869629, 1.4042999744415283, 0.1435299962759018, -0.6667500138282776, 0.07337799668312073, 0.11225000023841858, -1.5039000511169434, 0.007355500012636185, 0.5488700270652771, 0.2663300037384033, 0.21774999797344208, 0.3456299901008606, 0.028179999440908432, -0.20534999668598175, 0.20449000597000122, 0.31744998693466187, 0.5250599980354309, -0.5655500292778015, -0.16944000124931335, 0.24376000463962555, 0.6404600143432617, ...]
+>,
+    "birchenough" => #Nx.Tensor<
+      f32[50]
+      [0.18388999998569489, -0.08428499847650528, 0.8043500185012817, 0.1751600056886673, -0.7389900088310242, 0.41912999749183655, 0.03568100184202194, 0.39002999663352966, 0.2576799988746643, -0.37358999252319336, -0.3187600076198578, 0.68545001745224, -0.37297001481056213, -0.49845999479293823, -0.9357399940490723, 0.09769800305366516, -0.23232999444007874, -0.19078999757766724, 1.0153000354766846, -0.12219999730587006, -0.2612000107765198, -0.45925000309944153, -0.5412300229072571, -0.6471999883651733, 0.9011499881744385, 0.8592600226402283, 0.6211299896240234, 0.20767000317573547, 0.1639000028371811, 0.22780999541282654, -1.160599946975708, -1.3479000329971313, 1.2374000549316406, 0.6162800192832947, 0.22575999796390533, 0.04787300154566765, 0.19035999476909637, 0.48833999037742615, -0.9050700068473816, 0.47804000973701477, 0.6387400031089783, -0.10354000329971313, -0.4994699954986572, 0.043891001492738724, ...]
+>,
+    "nowell" => #Nx.Tensor<
+      f32[50]
+      [-0.07261800020933151, -0.3244599997997284, -0.1011900007724762, -1.1598000526428223, -0.2822200059890747, 0.938730001449585, -0.0713530033826828, 0.39796000719070435, 0.24375000596046448, 0.2894800007343292, 0.11975999921560287, 0.1954299956560135, 0.2564300000667572, -0.07375500351190567, -0.27274999022483826, 0.13197000324726105, 0.27017998695373535, -0.8710299730300903, 0.0713609978556633, 0.5161200165748596, -0.5864199995994568, 0.043800000101327896, 0.15080000460147858, -0.46852999925613403, 0.4735499918460846, 0.01412499975413084, -0.2662299871444702, 0.42069000005722046, -0.27292999625205994, -0.8508599996566772, -1.6719000339508057, -0.6435700058937073, 0.6739000082015991, -0.07715500146150589, 0.23885999619960785, -0.18795999884605408, 0.835640013217926, 0.5185700058937073, 0.07944799959659576, 0.2818700075149536, 0.6079000234603882, 0.432559996843338, 0.2569499909877777, ...]
+>,
+    "animal-based" => #Nx.Tensor<
+      f32[50]
+      [0.043497998267412186, -0.868910014629364, -0.1689700037240982, 0.08531200140714645, 0.05016300082206726, 0.4740400016307831, 0.5993000268936157, -0.06875699758529663, 0.7809799909591675, 0.6509199738502502, 0.14892999827861786, 0.13245999813079834, 1.076799988746643, 0.40415000915527344, -0.3085100054740906, 0.26794999837875366, -0.23340000212192535, 0.058687999844551086, 0.6405900120735168, -0.3453199863433838, 0.45860999822616577, 0.01054800022393465, 0.46904000639915466, 0.20683999359607697, 0.1590700000524521, 1.1919000148773193, -0.17621000111103058, -0.33011001348495483, 0.4113200008869171, 0.547819972038269, -0.8424199819564819, 0.25519001483917236, 0.1851000040769577, -0.2561100125312805, 0.42311999201774597, 0.9481899738311768, -0.09394299983978271, 0.40303999185562134, -0.5036799907684326, 0.15273000299930573, 0.4225899875164032, -0.0016341999871656299, ...]
+>,
+    "egyptologists" => #Nx.Tensor<
+      f32[50]
+      [0.37793999910354614, -0.050930000841617584, 0.0317160002887249, -0.19697000086307526, -0.06410600244998932, -0.17170999944210052, -0.14113999903202057, 0.38837000727653503, -1.246500015258789, 0.7218999862670898, 0.24265000224113464, 0.33695998787879944, 0.38214001059532166, 0.18369999527931213, 0.865369975566864, 0.865809977054596, 0.7496399879455566, -0.44402000308036804, 0.22019000351428986, -0.26365000009536743, 0.09534800052642822, -0.4356600046157837, -0.39204999804496765, 0.20111000537872314, 1.079200029373169, 0.22450999915599823, -1.2625999450683594, -1.048799991607666, -1.107800006866455, 0.31968000531196594, -1.0855000019073486, -0.48930999636650085, 0.4551900029182434, -0.305400013923645, 0.35631999373435974, -0.5400400161743164, -0.21810999512672424, 0.5256699919700623, -0.6611800193786621, 0.31036999821662903, -0.12724000215530396, ...]
+>,
+    "wamang" => #Nx.Tensor<
+      f32[50]
+      [-0.13932999968528748, -0.4246799945831299, 0.5541499853134155, 0.1795399934053421, 0.47519999742507935, 0.020826999098062515, 0.5865799784660339, 0.5720400214195251, -1.0264999866485596, 0.7851700186729431, 0.6238300204277039, -0.16752000153064728, -0.37957999110221863, 0.2797299921512604, -0.022352999076247215, -0.7186300158500671, -0.313289999961853, 0.36862999200820923, 0.9060400128364563, 0.6347600221633911, -0.7093799710273743, -0.018261000514030457, -0.30164000391960144, 0.13830000162124634, -0.27083998918533325, 0.04009300097823143, 0.12479999661445618, -0.35811999440193176, -0.7489500045776367, -0.4972499907016754, -2.089099884033203, -0.16485999524593353, 0.2091200053691864, 0.7716799974441528, 0.8177000284194946, -0.5532600283622742, -0.2751699984073639, 0.967490017414093, -0.9587600231170654, 0.3112100064754486, ...]
+>,
+    "uscategui" => #Nx.Tensor<
+      f32[50]
+      [-0.09542299807071686, -0.8052300214767456, -0.06508000195026398, -0.6358000040054321, 0.28909000754356384, -0.5092300176620483, 0.7182999849319458, 0.33274999260902405, -0.3915199935436249, 0.5619999766349792, 0.7130900025367737, 0.07334700226783752, 0.6649799942970276, 0.15113000571727753, 0.5118600130081177, -0.012357000261545181, -0.7112500071525574, -0.08704300224781036, 0.6992599964141846, 0.35736000537872314, -0.8768600225448608, -0.1030300036072731, -0.09526000171899796, -0.4763300120830536, 0.11954999715089798, 0.2243500053882599, 0.8159199953079224, 0.24900999665260315, 0.18592999875545502, 0.6539999842643738, -2.0622000694274902, -0.2782599925994873, -0.4264099895954132, -0.5509899854660034, 0.2859799861907959, 0.1814900040626526, 0.05829000100493431, 0.751550018787384, -0.5424699783325195, ...]
+>,
+    "arellano" => #Nx.Tensor<
+      f32[50]
+      [1.1431000232696533, 0.33656999468803406, 0.3538300096988678, -0.031244000419974327, 0.4058400094509125, -0.9997100234031677, 0.13867999613285065, -0.04451800137758255, -0.31727999448776245, 1.30239999294281, 0.4351300001144409, 0.1476999968290329, -0.7429900169372559, 0.7282999753952026, -0.20136000216007233, -0.6629199981689453, -0.14768999814987183, -0.9502599835395813, 0.4496699869632721, 1.4256000518798828, -1.0081000328063965, -1.0850000381469727, 0.8394899964332581, 0.07488799840211868, -1.618899941444397, -0.849049985408783, 0.09569700062274933, -0.5436199903488159, -0.6357700228691101, -1.0182000398635864, -0.34136998653411865, -0.4563499987125397, -0.6534900069236755, -0.42656001448631287, 0.15300999581813812, -0.5032399892807007, -0.9124799966812134, 0.4864700138568878, ...]
+>,
+    "104.14" => #Nx.Tensor<
+      f32[50]
+      [-0.8548700213432312, -0.1072700023651123, 0.7644500136375427, -0.6672199964523315, -0.7212399840354919, -0.6222900152206421, 0.17870000004768372, 0.8149700164794922, -1.6563999652862549, 0.18825000524520874, -0.22166000306606293, -0.5052400231361389, 0.7067800164222717, -0.4695500135421753, -0.5853400230407715, 0.023368999361991882, -0.6248900294303894, 0.0691400021314621, -0.26664999127388, -0.02900099940598011, 0.3622399866580963, 0.10075999796390533, -0.14554999768733978, -0.30722999572753906, 0.7020599842071533, 0.4495899975299835, 0.5598300099372864, 0.18106000125408173, 0.24045999348163605, -0.15302999317646027, -1.1404000520706177, 0.03643399849534035, 0.6622800230979919, 0.46105000376701355, 0.044084999710321426, -0.6670600175857544, -0.14309999346733093, ...]
+>,
+    "d'assisi" => #Nx.Tensor<
+      f32[50]
+      [0.6428099870681763, -0.057117998600006104, -0.5778099894523621, -0.7178800106048584, -0.08020900189876556, -1.2139999866485596, -0.32982000708580017, -1.0891000032424927, 0.8740500211715698, 0.807479977607727, -0.09635099768638611, 0.6119499802589417, 0.6088600158691406, 0.06019299849867821, -0.9089300036430359, -1.429900050163269, -0.3487299978733063, -0.5827599763870239, 0.0037946999073028564, 0.7033200263977051, -1.430299997329712, -0.846589982509613, -0.7146599888801575, 0.17181000113487244, 0.6159200072288513, 1.4890999794006348, 1.5046000480651855, -0.1658799946308136, -0.33114001154899597, 0.11492999643087387, -0.7528499960899353, 0.33520999550819397, 0.5211499929428101, -1.0740000009536743, 0.06706199795007706, -0.07427400350570679, ...]
+>,
+    "tenaya" => #Nx.Tensor<
+      f32[50]
+      [0.8328499794006348, 0.6648200154304504, -0.0035699999425560236, 0.9031500220298767, 0.3752099871635437, -0.18633000552654266, 0.08184999972581863, 1.3213000297546387, -0.09352300316095352, -0.3765999972820282, -0.7732399702072144, 0.7549499869346619, 0.6848400235176086, -0.5068100094795227, -0.3341600000858307, -0.12771999835968018, -0.16520999372005463, 0.9159799814224243, 0.18644000589847565, -0.40810999274253845, 0.6157299876213074, -0.39820000529289246, -0.009926199913024902, -0.17448000609874725, 0.14318999648094177, 0.6516900062561035, 0.9970300197601318, 0.6785500049591064, -0.573199987411499, -0.5216000080108643, -1.3315999507904053, -0.6709399819374084, 0.3068400025367737, 0.0122079998254776, 0.7031700015068054, ...]
+>,
+    "hyperconjugation" => #Nx.Tensor<
+      f32[50]
+      [-0.03655000030994415, -0.24698999524116516, -0.08307000249624252, -0.3943299949169159, -0.5465999841690063, -0.22339999675750732, 1.0799000263214111, -0.017299000173807144, -0.5308200120925903, 0.6026099920272827, 0.4113999903202057, 0.1821500062942505, 0.5707399845123291, 0.21066999435424805, -0.1310800015926361, 0.7660599946975708, 0.07384800165891647, -0.20973999798297882, 0.3649100065231323, 0.3352699875831604, 0.0590750016272068, -0.9068700075149536, -0.40139999985694885, 0.5049300193786621, 0.11049000173807144, 0.8497899770736694, 0.11676999926567078, 0.1614599972963333, 0.3983500003814697, 0.486299991607666, -1.0048999786376953, -0.11281000077724457, 0.6863899827003479, -0.82464998960495, ...]
+>,
+    "wadi" => #Nx.Tensor<
+      f32[50]
+      [0.05866200104355812, 0.3020400106906891, -0.5250599980354309, 0.5095599889755249, -0.1444299966096878, -1.4580999612808228, 0.2662000060081482, 0.29361000657081604, 0.4211899936199188, 0.055962998420000076, 0.14380000531673431, -0.23574000597000122, -0.07268299907445908, -1.493899941444397, -0.9259899854660034, 0.39704999327659607, 0.6620799899101257, -0.20603999495506287, -0.12554000318050385, 1.0298999547958374, -0.5021200180053711, -0.1441500037908554, 1.1333999633789062, 0.285290002822876, -0.358489990234375, 0.17513999342918396, -0.010393000207841396, 0.7423200011253357, 0.4990299940109253, -0.49526000022888184, 0.2373799979686737, -1.0405000448226929, -0.17844000458717346, ...]
+>,
+    "langoustine" => #Nx.Tensor<
+      f32[50]
+      [0.21696999669075012, -0.2557399868965149, -0.97257000207901, -0.7474200129508972, 0.09492000192403793, 0.6600199937820435, 0.2660999894142151, -0.049584001302719116, -0.3240399956703186, -0.2769699990749359, -0.4152100086212158, 0.6728299856185913, 1.0427000522613525, 1.236299991607666, -1.1878999471664429, -1.0850000381469727, -0.4061099886894226, 0.24650999903678894, 0.17648999392986298, -0.4702099859714508, -0.5131999850273132, -0.19820000231266022, -0.26743000745773315, -0.18497000634670258, -0.09499199688434601, 0.927869975566864, 0.053029999136924744, 0.20243999361991882, -0.03395099937915802, -0.08348499983549118, -1.0419000387191772, 0.9254500269889832, ...]
+>,
+    "hawkman" => #Nx.Tensor<
+      f32[50]
+      [-1.4966000318527222, 0.16804000735282898, 0.5416300296783447, -0.31918999552726746, 0.38565999269485474, 1.1827000379562378, 0.3103100061416626, -0.45113998651504517, -0.5893800258636475, -0.18741999566555023, 0.5642799735069275, 0.576200008392334, 0.4989199936389923, 0.4641000032424927, -0.5815500020980835, 0.3430100083351135, -0.35830000042915344, 0.3023500144481659, -0.1947699934244156, 0.3309899866580963, -0.034522999078035355, -0.09779199957847595, 0.4351100027561188, -0.8610699772834778, 1.0225000381469727, 0.6642000079154968, -0.3094800114631653, -0.2830199897289276, 0.47172001004219055, -0.3199799954891205, -1.055999994277954, ...]
+>,
+    "blobs" => #Nx.Tensor<
+      f32[50]
+      [0.3731899857521057, -0.3736099898815155, 0.49088001251220703, 0.3051599860191345, -0.029572000727057457, 0.11078000068664551, 0.07755400240421295, -0.6721400022506714, -0.43101000785827637, 0.7690899968147278, -0.16641999781131744, 0.19890999794006348, 0.8252500295639038, 1.0151000022888184, -0.3264400064945221, -0.04024999961256981, -0.05402800068259239, -0.0562409982085228, -0.2753300070762634, -1.0391000509262085, -0.9125099778175354, -0.6733800172805786, 1.2395999431610107, -0.34731000661849976, -0.208639994263649, 0.6425399780273438, -0.7603499889373779, 1.4891999959945679, 0.9835900068283081, -0.6819000244140625, ...]
+>,
+    "7.91" => #Nx.Tensor<
+      f32[50]
+      [-0.4049699902534485, -0.17373999953269958, 1.0870000123977661, 0.3759700059890747, 0.32346001267433167, 0.4006600081920624, 0.28913000226020813, -0.6063200235366821, -0.9067000150680542, 0.4237000048160553, -0.08073099702596664, -0.6179100275039673, 0.6816800236701965, -0.5225399732589722, 0.33726000785827637, 0.3910999894142151, -1.016700029373169, -0.6350399851799011, 0.09655799716711044, 0.4254800081253052, 0.7723699808120728, 0.005831600166857243, -0.340719997882843, -0.5593000054359436, 0.6072099804878235, 0.8515899777412415, 1.3632999658584595, -0.750249981880188, -0.05764399841427803, ...]
+>,
+    "sebai" => #Nx.Tensor<
+      f32[50]
+      [-0.2676999866962433, 0.3604399859905243, 0.331030011177063, -0.2537899911403656, -0.4722299873828888, -0.9029800295829773, 0.059122998267412186, 0.3352600038051605, 0.17199000716209412, 0.8660399913787842, -0.12460000067949295, -0.5415899753570557, 0.3982900083065033, 0.6147599816322327, -0.3196899890899658, -0.40790000557899475, -0.048870999366045, -0.10315000265836716, 0.9253000020980835, 0.7513099908828735, -0.23875999450683594, 0.20184999704360962, -0.3765600025653839, -0.07012499868869781, 0.17163999378681183, 0.7398200035095215, 0.0441880002617836, 0.25804001092910767, ...]
+>,
+    "bishr" => #Nx.Tensor<
+      f32[50]
+      [1.023800015449524, -0.16224999725818634, 0.21015000343322754, -0.4181300103664398, 0.447380006313324, -1.776900053024292, -0.03468700125813484, 0.8902300000190735, -0.5495499968528748, 0.47380000352859497, 0.009429500438272953, 0.8692899942398071, 0.26179999113082886, 0.23779000341892242, -0.5998899936676025, 0.12156999856233597, -0.15964999794960022, -0.10761000216007233, 0.7208499908447266, 0.6446200013160706, -0.013879000209271908, -0.07079900056123734, 1.0571000576019287, 0.46560001373291016, 1.5046000044094399e-5, 1.1262999773025513, -0.40481001138687134, ...]
+>,
+    "imhof" => #Nx.Tensor<
+      f32[50]
+      [0.06266599893569946, -0.3640199899673462, 0.46588000655174255, 0.17637999355793, -0.044899001717567444, 0.44843000173568726, 0.2309899926185608, 0.5087000131607056, -0.09613099694252014, 0.04494699835777283, 0.811489999294281, 0.26015999913215637, -0.3498699963092804, -0.14196999371051788, -0.18885000050067902, 0.394430011510849, 0.6371999979019165, -0.333730012178421, 0.6655600070953369, 0.4506300091743469, 0.18752999603748322, -0.01803700067102909, -0.36289000511169434, 0.131850004196167, -0.08560000360012054, 1.4249999523162842, ...]
+>,
+    "coulee" => #Nx.Tensor<
+      f32[50]
+      [0.3657599985599518, 1.257599949836731, -0.38436999917030334, 0.5935800075531006, -1.249500036239624, -0.07740200310945511, 0.8370299935340881, 0.8462899923324585, -0.03097599931061268, 0.01672299951314926, -0.696370005607605, 0.05273900181055069, 0.09458299726247787, -0.4888699948787689, -0.14020000398159027, 0.14053000509738922, 1.159000039100647, 1.0789999961853027, 0.6109099984169006, 0.33987998962402344, 0.0012832999927923083, -1.867300033569336, -0.5404999852180481, -0.42302998900413513, 0.8257899880409241, ...]
+>,
+    "doubletwist" => #Nx.Tensor<
+      f32[50]
+      [0.04541200026869774, -0.5632100105285645, -0.39280998706817627, 1.4610999822616577, -0.22617000341415405, -0.24911999702453613, -0.12492000311613083, 0.6673300266265869, 0.5198799967765808, 0.9982100129127502, 0.2856999933719635, 0.09111300110816956, 0.31169000267982483, 0.07076899707317352, -0.19668999314308167, 0.06739000231027603, -0.042695000767707825, 0.04084800183773041, 0.8222000002861023, 0.2237900048494339, 0.04076100140810013, -0.12949000298976898, -0.31716999411582947, 0.3023500144481659, ...]
+>,
+    "scienze" => #Nx.Tensor<
+      f32[50]
+      [0.9563000202178955, -0.35234999656677246, -0.20652000606060028, 1.1963000297546387, -0.9966400265693665, -0.6901400089263916, 1.4092999696731567, 0.26065000891685486, 0.8278399705886841, -0.26572999358177185, 0.18150000274181366, 0.6609399914741516, -0.04881799966096878, -0.8951699733734131, -0.5741199851036072, -1.5454000234603882, -0.5969300270080566, 0.6729999780654907, -0.14941999316215515, -0.4378499984741211, 0.15845000743865967, -1.687399983406067, 0.7886199951171875, ...]
+>,
+    "saffire" => #Nx.Tensor<
+      f32[50]
+      [-1.280500054359436, -0.25473999977111816, 0.3751400113105774, -0.05986800044775009, -1.1252000331878662, 0.5298699736595154, 0.2712100148200989, 0.17652000486850739, -0.38741999864578247, 0.6058499813079834, 0.18729999661445618, 0.34926000237464905, 0.6868100166320801, -0.020323000848293304, -1.292099952697754, -0.27191999554634094, -0.386570006608963, -0.33212000131607056, 0.8517100214958191, 0.5600000023841858, -0.024526000022888184, -0.704230010509491, ...]
+>,
+    "thiazide" => #Nx.Tensor<
+      f32[50]
+      [-1.0724999904632568, -0.6501399874687195, -0.018634000793099403, 1.1231000423431396, -1.4779000282287598, 0.22605000436306, 1.8938000202178955, -0.09074199944734573, 0.7518399953842163, 0.9340900182723999, 0.6113399863243103, 0.27432000637054443, 0.8178499937057495, 0.8067399859428406, -0.9379100203514099, 0.01541099976748228, -0.9988200068473816, 0.6252099871635437, -0.5711299777030945, -0.5188999772071838, -0.10708999633789062, ...]
+>,
+    "kashagan" => #Nx.Tensor<
+      f32[50]
+      [1.7023999691009521, 0.08590400218963623, 0.415010005235672, 1.533400058746338, 0.7306399941444397, -0.9580399990081787, -0.9357600212097168, -0.1277499943971634, 1.7503999471664429, 0.7934899926185608, 0.48642000555992126, -0.3068700134754181, -0.11994999647140503, 1.01010000705719, 0.3315899968147278, -0.020054999738931656, 2.0422000885009766, 0.2347099930047989, -1.2467000484466553, 0.27882999181747437, ...]
+>,
+    "tabernacle" => #Nx.Tensor<
+      f32[50]
+      [0.21403999626636505, 1.5054999589920044, -1.0235999822616577, -1.2132999897003174, 1.1763999462127686, 0.25863000750541687, -0.6497200131416321, -0.02646300010383129, 0.2795499861240387, 0.8637199997901917, 0.07374099642038345, -0.09943299740552902, 0.8017799854278564, -0.23826000094413757, -0.9540799856185913, 0.40549999475479126, 0.33643999695777893, 0.58992999792099, 0.14880000054836273, ...]
+>,
+    "spirko" => #Nx.Tensor<
+      f32[50]
+      [0.41940999031066895, 0.006244199816137552, 0.7243800163269043, -2.2143000023788773e-5, -0.4145500063896179, 0.5150600075721741, -0.03033900074660778, 0.6994900107383728, 0.844510018825531, 0.6596099734306335, -0.849590003490448, 0.08681800216436386, -0.16821999847888947, -0.7673500180244446, -0.1204800009727478, 0.01584400050342083, -0.4530799984931946, -0.4714199900627136, ...]
+>,
+    "91.32" => #Nx.Tensor<
+      f32[50]
+      [-1.37090003490448, -0.1469700038433075, 0.13736000657081604, -0.655460000038147, -0.4401099979877472, 0.10960999876260757, -0.5559399724006653, 0.09192100167274475, -0.8025400042533875, -0.18410000205039978, 0.0211970005184412, -0.5882400274276733, 1.5535000562667847, 0.14580999314785004, -0.7909200191497803, 0.1465200036764145, -0.44464001059532166, ...]
+>,
+    "hynie" => #Nx.Tensor<
+      f32[50]
+      [-0.7454599738121033, 0.5737299919128418, 0.638759970664978, -0.056770000606775284, -1.555400013923645, 1.4284000396728516, -0.6296799778938293, -0.49750998616218567, 1.3478000164031982, 0.7882800102233887, 0.017868999391794205, 0.8780500292778015, -0.6732500195503235, 0.33792999386787415, -0.4292899966239929, 1.4479999542236328, ...]
+>,
+    "duvaliers" => #Nx.Tensor<
+      f32[50]
+      [-0.7097899913787842, -1.1019999980926514, 0.23628999292850494, -1.0267000198364258, -0.5049399733543396, -0.3893899917602539, -0.00762900011613965, 0.28407999873161316, 0.5732799768447876, 0.2627600133419037, 0.4732399880886078, 0.36739999055862427, 0.07528100162744522, 0.3375200033187866, -0.06621299684047699, ...]
+>,
+    "jenrette" => #Nx.Tensor<
+      f32[50]
+      [-0.245059996843338, -0.27553001046180725, 0.13404999673366547, -0.04191699996590614, 0.4453200101852417, 0.5103700160980225, -0.27177000045776367, -0.7994300127029419, 0.8056100010871887, -0.38637998700141907, -0.8783699870109558, 0.7964800000190735, -0.5940600037574768, -0.9293599724769592, ...]
+>,
+    "caronna" => #Nx.Tensor<
+      f32[50]
+      [-0.042357999831438065, -0.3286300003528595, 0.09010700136423111, 0.31779998540878296, 0.08443199843168259, 1.2502000331878662, -0.11548999696969986, 0.6962500214576721, 0.4808099865913391, -0.2726300060749054, -0.637499988079071, -0.2961600124835968, 0.25742998719215393, ...]
+>,
+    "audiotapes" => #Nx.Tensor<
+      f32[50]
+      [0.35036998987197876, -0.37158000469207764, 0.5247399806976318, 0.42232000827789307, 0.008054199628531933, -0.641730010509491, 0.11279000341892242, 0.0716869980096817, 0.3043299913406372, 2.0517001152038574, -0.8365100026130676, -0.11687999963760376, ...]
+>,
+    "gilan-e" => #Nx.Tensor<
+      f32[50]
+      [-0.5706300139427185, 0.27911999821662903, -0.07789099961519241, 1.3042999505996704, -0.4555400013923645, -1.0627000331878662, 1.7440999746322632, 0.9017400145530701, 1.2259000539779663, -0.3413499891757965, -0.8965399861335754, ...]
+>,
+    "copney" => #Nx.Tensor<
+      f32[50]
+      [-0.4300299882888794, 0.64410001039505, 0.6016200184822083, -0.10651999711990356, 0.2414799928665161, 0.050776999443769455, 0.018316999077796936, 0.04728100076317787, 0.05093099921941757, 0.24180999398231506, ...]
+>,
+    "dollarize" => #Nx.Tensor<
+      f32[50]
+      [0.1509999930858612, -1.2414000034332275, 0.35596999526023865, -0.6543899774551392, -0.2542000114917755, -0.8373799920082092, 0.7551900148391724, -5.890399916097522e-5, 0.019216999411582947, ...]
+>,
+    "placebo" => #Nx.Tensor<
+      f32[50]
+      [0.7553499937057495, -1.3481999635696411, -0.25499001145362854, -1.3478000164031982, -0.23221999406814575, 1.3042000532150269, 0.6508299708366394, 0.11073999851942062, ...]
+>,
+    "roenning" => #Nx.Tensor<
+      f32[50]
+      [-0.9387000203132629, -0.21367000043392181, -0.7685199975967407, 0.6965100169181824, 1.0944000482559204, 0.6964100003242493, 0.07603199779987335, ...]
+>,
+    "ruine" => #Nx.Tensor<
+      f32[50]
+      [0.38552001118659973, -0.5133500099182129, -0.5376799702644348, -0.2981700003147125, -0.7506999969482422, 0.0744289979338646, ...]
+>,
+    "lagoven" => #Nx.Tensor<
+      f32[50]
+      [0.3019599914550781, -1.700700044631958, 0.04293299838900566, 1.4514000415802002, 0.43279001116752625, ...]
+>,
+    "alanbrooke" => #Nx.Tensor<
+      f32[50]
+      [-0.6334999799728394, -1.6927000284194946, 0.10277000069618225, 0.44464001059532166, ...]
+>,
+    "eritrean" => #Nx.Tensor<
+      f32[50]
+      [0.2608200013637543, -0.0722619965672493, -0.3437199890613556, ...]
+>,
+    "chanaka" => #Nx.Tensor<
+      f32[50]
+      [-0.6395400166511536, -1.4839999675750732, ...]
+>,
+    "108.63" => #Nx.Tensor<
+      f32[50]
+      [-0.3795199990272522, ...]
+>,
+    "semitransparent" => #Nx.Tensor<
+      f32[50]
+      [...]
+>,
+    ...
+  }
+}
+```
+
+```elixir
+w2v.wordvecs |> Map.keys() |> length()
+```
+
+```output
+400000
+```
+
+## Prepare review text data
+
+<!-- livebook:{"disable_formatting":true} -->
+
+```elixir
+defmodule PreprocReviews do
+  @default_defn_compiler EXLA
+  
+  import Nx.Defn
+
+  def preproc_reviews(reviews, w2v) do
+    reviews
+    |> Stream.map(&String.downcase/1)
+    |> Stream.map(&String.split/1)
+    |> Stream.map(fn tokens -> {tokens, length(tokens)} end)
+    |> Stream.map(fn {tokens, len} -> 
+      NLTEx.WordVectors.vectorize_tokens(tokens, w2v) 
+      |> Nx.stack() 
+      |> nx_proc(
+        lead: 0, 
+        trail: 32 - len
+        )
+    end)
+    |> Enum.to_list()
+    |> Nx.stack()
+    end
+
+  defnp nx_proc(t, opts \\ []) do
+    t
+    |> Nx.pad(0.0, [{opts[:lead], opts[:trail], 0}, {0, 0, 0}])
+    |> Nx.transpose()
+  end
+
+end
+
+num_samples = length(reviews.review)
+vec_reviews =
+  reviews.review
+  |> Stream.take(num_samples)
+  |> PreprocReviews.preproc_reviews(w2v)
+```
+
+```output
+#Nx.Tensor<
+  f32[25000][50][32]
+  [
+    [
+      [0.4180000126361847, 0.4825100004673004, 0.8546800017356873, 0.7760400176048279, -0.6785799860954285, -0.7613099813461304, -0.19460999965667725, 0.4776900112628937, 0.14827999472618103, 0.6804699897766113, -0.3616499900817871, 0.4986099898815155, -0.2009200006723404, 0.14518000185489655, 0.6804699897766113, 0.30625998973846436, -0.03353700041770935, 0.0, 0.5904899835586548, 0.8946599960327148, 0.4180000126361847, 0.25995999574661255, -1.4864000082015991, 0.37171998620033264, -0.091839998960495, 0.6804699897766113, -0.08765900135040283, 0.7655699849128723, 0.6775100231170654, 0.5307400226593018, -0.0265670008957386, -0.35684001445770264],
+      [0.24967999756336212, 0.8774600028991699, 0.19160999357700348, 0.2258400022983551, 0.6757599711418152, 0.4559899866580963, -0.051277000457048416, -0.12241999804973602, 0.17760999500751495, -0.03926299884915352, -0.10606999695301056, -0.12284000217914581, -0.0602709986269474, 0.622409999370575, -0.03926299884915352, -0.18591000139713287, 0.47536998987197876, 0.0, ...],
+      ...
+    ],
+    ...
+  ]
+>
+```
+
+## Prep sentiment labels
+
+```elixir
+labels =
+  reviews.sentiment
+  |> Enum.take(num_samples)
+  |> Nx.tensor(type: {:f, 32})
+  |> Nx.new_axis(-1)
+  |> Nx.equal(Nx.iota({2}))
+
+Nx.sum(labels, axes: [0])
+```
+
+```output
+#Nx.Tensor<
+  u64[2]
+  [12500, 12500]
+>
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Construct Axon binary classification model and train it!
+
+```elixir
+conv_opts = [
+  kernel_size: 3,
+  activation: :relu
+]
+
+max_pool_opts = [
+  kernel_size: 3,
+  stride: 3
+]
+
+num_words = vec_reviews |> Nx.shape() |> elem(2)
+vec_size = vec_reviews |> Nx.shape() |> elem(1)
+
+model =
+  Axon.input({nil, vec_size, num_words})
+  |> Axon.conv(16, conv_opts)
+  |> Axon.max_pool(max_pool_opts)
+  |> Axon.flatten()
+  |> Axon.dense(224, activation: :relu)
+  |> Axon.dense(2, activation: :softmax)
+```
+
+```output
+-------------------------------------------------------
+                         Model
+=======================================================
+ Layer                      Shape           Parameters
+=======================================================
+ input_8 ( input )          {nil, 50, 32}   0
+ conv_11 ( conv )           {nil, 16, 30}   2416
+ relu_12 ( relu )           {nil, 16, 30}   0
+ max_pool_13 ( max_pool )   {nil, 16, 28}   0
+ flatten_14 ( flatten )     {nil, 448}      0
+ dense_17 ( dense )         {nil, 224}      100576
+ relu_18 ( relu )           {nil, 224}      0
+ dense_21 ( dense )         {nil, 2}        450
+ softmax_22 ( softmax )     {nil, 2}        0
+-------------------------------------------------------
+
+```
+
+```elixir
+batch_size = 32
+
+train_x =
+  vec_reviews
+  |> Nx.to_batched_list(batch_size)
+
+train_y =
+  labels
+  |> Nx.to_batched_list(batch_size)
+
+{train_x, train_y} =
+  train_x
+  |> Enum.zip(train_y)
+  |> Enum.shuffle()
+  |> Enum.unzip()
+
+final_params =
+  model
+  |> Axon.Training.step(:categorical_cross_entropy, Axon.Optimizers.adam(0.005),
+    metrics: [:accuracy]
+  )
+  |> Axon.Training.train(train_x, train_y, epochs: 10, compiler: EXLA)
+```
+
+```output
+Training model for 10 epochs
+Metrics: [:accuracy]
+Epoch 1, batch 750 - Average Loss: 0.73228 - Average accuracy: 0.54904
+
+Epoch 1 time: 11.910624s
+Epoch 1 loss: 0.72920
+Epoch 0 accuracy: 0.55326
+
+
+Epoch 2, batch 750 - Average Loss: 0.64178 - Average accuracy: 0.62233
+
+Epoch 2 time: 13.064993s
+Epoch 2 loss: 0.64060
+Epoch 1 accuracy: 0.62456
+
+
+Epoch 3, batch 750 - Average Loss: 0.62217 - Average accuracy: 0.64679
+
+Epoch 3 time: 15.075982s
+Epoch 3 loss: 0.62093
+Epoch 2 accuracy: 0.64882
+
+
+Epoch 4, batch 750 - Average Loss: 0.60884 - Average accuracy: 0.65638
+
+Epoch 4 time: 15.032197s
+Epoch 4 loss: 0.60761
+Epoch 3 accuracy: 0.65766
+
+
+Epoch 5, batch 750 - Average Loss: 0.59408 - Average accuracy: 0.67346
+
+Epoch 5 time: 15.067038s
+Epoch 5 loss: 0.59270
+Epoch 4 accuracy: 0.67505
+
+
+Epoch 6, batch 750 - Average Loss: 0.57610 - Average accuracy: 0.68675
+
+Epoch 6 time: 15.04135s
+Epoch 6 loss: 0.57420
+Epoch 5 accuracy: 0.68842
+
+
+Epoch 7, batch 750 - Average Loss: 0.55729 - Average accuracy: 0.70150
+
+Epoch 7 time: 15.047885s
+Epoch 7 loss: 0.55474
+Epoch 6 accuracy: 0.70417
+
+
+Epoch 8, batch 750 - Average Loss: 0.53418 - Average accuracy: 0.72112
+
+Epoch 8 time: 15.185222s
+Epoch 8 loss: 0.53189
+Epoch 7 accuracy: 0.72357
+
+
+Epoch 9, batch 750 - Average Loss: 0.50976 - Average accuracy: 0.73979
+
+Epoch 9 time: 15.101834s
+Epoch 9 loss: 0.50774
+Epoch 8 accuracy: 0.74165
+
+
+Epoch 10, batch 750 - Average Loss: 0.47534 - Average accuracy: 0.76171
+
+Epoch 10 time: 15.01978s
+Epoch 10 loss: 0.47397
+Epoch 9 accuracy: 0.76269
+
+
+Training finished
+```
+
+```output
+%{
+  epoch: 10,
+  epoch_loss: 0.0,
+  epoch_step: 0,
+  metrics: %{accuracy: 0.0},
+  optimizer_state: {%{
+     count: #Nx.Tensor<
+       s64
+       7780
+>,
+     mu: %{
+       "conv_11_bias" => #Nx.Tensor<
+         f32[16]
+         [-0.00791921466588974, 0.016271114349365234, 0.008273466490209103, 0.00412947591394186, -0.005331954453140497, -0.005285616498440504, 0.00805414654314518, 1.0926168761216104e-4, -0.01934986747801304, -0.00655314652249217, -0.0048054116778075695, 0.003911511041224003, -0.007367817219346762, 0.007299387361854315, 0.012427513487637043, -0.002290696371346712]
+>,
+       "conv_11_kernel" => #Nx.Tensor<
+         f32[16][50][3]
+         [
+           [
+             [0.0013083111261948943, 0.001581721007823944, -0.004306764807552099],
+             [0.0011764524970203638, 0.0046688164584338665, 5.64444599149283e-6],
+             [-9.64949547778815e-4, -0.0039008590392768383, -0.005115661770105362],
+             [0.0056749871000647545, -3.118923050351441e-4, 7.719428394921124e-4],
+             [-0.006353455130010843, 0.003965018782764673, 4.4135114876553416e-4],
+             [-0.0024758970830589533, -0.0023610054049640894, 0.0022335927933454514],
+             [0.0034378597047179937, 0.0047895354218780994, 0.005551621317863464],
+             [-0.0011363123776391149, 3.6413755151443183e-4, 0.0012181686470285058],
+             [0.0011838262435048819, 1.7559449770487845e-4, -0.0016978844068944454],
+             [-0.0037831817753612995, -0.007492634933441877, 1.7864088295027614e-4],
+             [-0.001881408505141735, 0.004854519385844469, -0.0022633085027337074],
+             [6.522071780636907e-4, 0.004345071967691183, 4.964290419593453e-4],
+             [0.003236033720895648, 0.0029032432939857244, 3.0154568958096206e-4],
+             [-0.0029958037193864584, ...],
+             ...
+           ],
+           ...
+         ]
+>,
+       "dense_17_bias" => #Nx.Tensor<
+         f32[224]
+         [6.904511246830225e-4, 3.6531343357637525e-4, -0.0028100532945245504, 5.591714289039373e-4, -0.001807277207262814, 0.0019359150901436806, 1.677350519457832e-4, -0.0010278597474098206, 0.0011590492213144898, -7.434518774971366e-4, 0.002258103573694825, 5.638462607748806e-4, 0.0046501560136675835, -6.843995652161539e-5, -0.0011758430628105998, 0.0017849223222583532, 9.314014459960163e-4, -0.0022186478599905968, 6.243021343834698e-4, -0.0010734229581430554, -0.002155976602807641, 0.0022309941705316305, -5.007702566217631e-5, 0.0016016216250136495, 4.4337482540868223e-4, -7.435611914843321e-4, 0.001442192355170846, 3.157207684125751e-4, 2.7197159943170846e-4, -1.6467692330479622e-4, 7.549962028861046e-4, 0.005818433128297329, 2.7902968577109277e-4, -0.0035379871260374784, 7.961451774463058e-4, -9.620862692827359e-5, -0.0018990595126524568, -0.0015871565556153655, -2.0751182455569506e-4, ...]
+>,
+       "dense_17_kernel" => #Nx.Tensor<
+         f32[448][224]
+         [
+           [3.091739199589938e-5, -1.2401855542520934e-8, 5.3393960115499794e-5, 4.873346597378259e-7, 2.99706440221037e-11, 2.522807562854723e-7, -8.880331733962521e-5, 7.969544640218373e-6, -1.8004608864430338e-4, 1.5206389036848122e-7, 6.344409484881908e-5, 1.365146484744173e-8, 2.9257641290314496e-4, -1.5536707004890832e-18, 2.8208437470311765e-6, -1.3436184644888272e-6, 1.4391324612006429e-6, -7.132594248560054e-8, -1.235274612554349e-5, 3.271056048106402e-4, -2.181294153549146e-14, 3.360453702043742e-4, 1.308638311456889e-4, -2.0545422739814967e-4, 5.612344248220325e-4, 1.1830348256580692e-7, -4.3768892510342994e-7, -1.0566132147005192e-7, -2.641241007950157e-4, 2.7991304523311555e-4, 1.2934314099766198e-6, -1.2993668497074395e-4, 6.385782035067677e-5, 4.453982401173562e-4, -4.528729277808452e-6, 2.0464169665501686e-6, 4.452858206605015e-7, -9.101128671318293e-5, ...],
+           ...
+         ]
+>,
+       "dense_21_bias" => #Nx.Tensor<
+         f32[2]
+         [0.028337612748146057, -0.02833757922053337]
+>,
+       "dense_21_kernel" => #Nx.Tensor<
+         f32[224][2]
+         [
+           [8.642948814667761e-4, -8.642947068437934e-4],
+           [4.30783664342016e-4, -4.307836352381855e-4],
+           [-0.0014048117445781827, 0.0014048125594854355],
+           [0.0011830059811472893, -0.0011830063303932548],
+           [6.419011624529958e-4, -6.41901046037674e-4],
+           [0.0012021481525152922, -0.0012021481525152922],
+           [0.0018158823950216174, -0.0018158823950216174],
+           [-0.002859680214896798, 0.002859680214896798],
+           [-0.0033072566147893667, 0.0033072566147893667],
+           [-0.0040135495364665985, 0.0040135495364665985],
+           [0.006388808600604534, -0.006388806737959385],
+           [-5.800308426842093e-4, 5.800314829684794e-4],
+           [0.007988641038537025, -0.00798864010721445],
+           [-2.0284174752305262e-5, 2.0284191123209894e-5],
+           [8.853139588609338e-4, -8.853141916915774e-4],
+           [0.006093156989663839, -0.006093156524002552],
+           [3.4068338572978973e-4, -3.4068303648382425e-4],
+           [-0.001870849053375423, 0.0018708487041294575],
+           ...
+         ]
+>
+     },
+     nu: %{
+       "conv_11_bias" => #Nx.Tensor<
+         f32[16]
+         [7.55445973481983e-4, 0.004909742623567581, 0.004036047030240297, 6.087872316129506e-4, 4.284991882741451e-4, 0.0011239869054406881, 0.0018902200972661376, 0.0011104622390121222, 0.012058616615831852, 3.0899918056093156e-4, 2.719613548833877e-4, 0.0032438025809824467, 5.022498080506921e-4, 4.2284620576538146e-4, 6.919988663867116e-4, 6.595122977159917e-4]
+>,
+       "conv_11_kernel" => #Nx.Tensor<
+         f32[16][50][3]
+         [
+           [
+             [1.3941872748546302e-4, 1.8036946130450815e-4, 6.991268310230225e-5],
+             [9.791412594495341e-5, 1.2174060975667089e-4, 8.346827235072851e-5],
+             [9.13179901544936e-5, 9.382811549585313e-5, 6.628137634834275e-5],
+             [1.0018510511144996e-4, 1.1894333147211e-4, 7.09207815816626e-5],
+             [1.8993833509739488e-4, 1.7642778402660042e-4, 7.122429087758064e-5],
+             [1.4150778588373214e-4, 1.1420677765272558e-4, 5.794738535769284e-5],
+             [2.0796236640308052e-4, 2.4051903164945543e-4, 8.872488979250193e-5],
+             [9.701964154373854e-5, 1.0233864304609597e-4, 7.570291927549988e-5],
+             [1.286453625652939e-4, 1.3021845370531082e-4, 7.013523281784728e-5],
+             [1.230252382811159e-4, 1.0313484381185845e-4, 6.80092052789405e-5],
+             [6.735069473506883e-5, 7.809000817360356e-5, 4.298695785109885e-5],
+             [1.065839096554555e-4, 1.4248125080484897e-4, 6.200484494911507e-5],
+             [1.1482958507258445e-4, 2.0410647266544402e-4, 7.010422996245325e-5],
+             ...
+           ],
+           ...
+         ]
+>,
+       "dense_17_bias" => #Nx.Tensor<
+         f32[224]
+         [1.4632392776547931e-5, 3.391755308257416e-5, 5.66685848752968e-5, 1.1612155503826216e-5, 2.1477371774381027e-5, 2.516200220270548e-5, 1.792047987692058e-5, 2.9509359592339024e-5, 4.9767684686230496e-5, 1.2259230061317794e-5, 1.766869900166057e-5, 2.260950714116916e-5, 7.485852984245867e-5, 1.3753697203355841e-5, 3.5417092476563994e-6, 1.5949752196320333e-5, 9.934324771165848e-5, 9.031305671669543e-5, 3.960949106840417e-5, 3.111851401627064e-5, 1.8155073121306486e-5, 7.393684063572437e-5, 6.096731158322655e-5, 6.954497075639665e-5, 5.340652569429949e-5, 1.842041965574026e-4, 3.657975685200654e-5, 4.464221774469479e-7, 1.923911077028606e-5, 5.404025432653725e-5, 7.109250873327255e-5, 4.154944690526463e-5, 1.745981353451498e-5, 8.537979010725394e-5, 5.9375441196607426e-5, 2.48979249590775e-5, 6.1020964494673535e-5, 2.5086558889597654e-4, ...]
+>,
+       "dense_17_kernel" => #Nx.Tensor<
+         f32[448][224]
+         [
+           [2.9306943361007143e-7, 1.3724275049753487e-6, 1.051749563885096e-6, 5.218827254793723e-7, 2.113911250489764e-7, 1.0884331231864053e-6, 6.921153499206412e-7, 1.7680898736216477e-6, 9.136705898526998e-7, 3.4961382766596216e-7, 4.0805178969094413e-7, 7.502037533413386e-7, 3.3648764201643644e-6, 2.6631815330802056e-7, 3.0822403118691e-7, 6.124972173893184e-7, 2.943589834103477e-6, 6.146367013570853e-6, 1.2471075194753212e-7, 3.172122660544119e-6, 4.6974403744570736e-7, 3.1838669656281127e-6, 9.35444677452324e-6, 1.2957832041138317e-5, 2.4754961032158462e-6, 2.3309166863327846e-6, 1.4058348369871965e-6, 4.1543248840980596e-9, 9.978844900615513e-6, 8.961033586274425e-7, 1.3590910157290637e-6, 1.0128721896762727e-6, 3.5266461395622173e-7, 3.1730380669614533e-6, 6.6391098698659334e-6, 1.5742587038403144e-6, 5.055709152657073e-6, ...],
+           ...
+         ]
+>,
+       "dense_21_bias" => #Nx.Tensor<
+         f32[2]
+         [0.11487168818712234, 0.11487170308828354]
+>,
+       "dense_21_kernel" => #Nx.Tensor<
+         f32[224][2]
+         [
+           [9.242510714102536e-5, 9.242510714102536e-5],
+           [1.1132557119708508e-4, 1.1132557119708508e-4],
+           [3.2513830228708684e-4, 3.251382731832564e-4],
+           [3.0981318559497595e-5, 3.09813221974764e-5],
+           [6.501023017335683e-5, 6.501023017335683e-5],
+           [1.635448425076902e-4, 1.6354482795577496e-4],
+           [1.7336495511699468e-4, 1.7336494056507945e-4],
+           [2.545179158914834e-4, 2.545179158914834e-4],
+           [3.3873567008413374e-4, 3.387356991879642e-4],
+           [9.32289331103675e-5, 9.322894038632512e-5],
+           [2.2231763068703003e-5, 2.22317612497136e-5],
+           [9.086152567761019e-5, 9.086152567761019e-5],
+           [3.2156662200577557e-4, 3.215665929019451e-4],
+           [1.2935027370986063e-5, 1.2935026461491361e-5],
+           [2.1347565052565187e-5, 2.1347563233575784e-5],
+           [9.677720663603395e-5, 9.677721391199157e-5],
+           [3.278403601143509e-4, 3.2784027280285954e-4],
+           [3.281855024397373e-4, ...],
+           ...
+         ]
+>
+     }
+   }},
+  params: %{
+    "conv_11_bias" => #Nx.Tensor<
+      f32[16]
+      [-0.3112342655658722, -0.3603881597518921, -0.38778674602508545, -0.17280472815036774, -0.06644356995820999, -0.17691193521022797, -0.2922506332397461, -0.34921321272850037, -0.43251365423202515, -0.2554040253162384, -0.11922823637723923, -0.33832159638404846, -0.531607985496521, -0.02297632023692131, -0.06506745517253876, -0.15416406095027924]
+>,
+    "conv_11_kernel" => #Nx.Tensor<
+      f32[16][50][3]
+      [
+        [
+          [-0.20549273490905762, 0.4910601079463959, -0.3983250558376312],
+          [-0.23797892034053802, -0.6853095293045044, -0.2903415858745575],
+          [0.44235384464263916, 0.6372160911560059, 0.540153980255127],
+          [-0.37827175855636597, 0.22355420887470245, 0.24123913049697876],
+          [0.33265990018844604, -0.7471524477005005, 0.0716194435954094],
+          [0.597466230392456, -0.029973626136779785, -0.27272462844848633],
+          [0.04916917532682419, -0.37578415870666504, 0.31167498230934143],
+          [0.2928239107131958, 0.5021021366119385, 0.1995297521352768],
+          [-0.5343046188354492, 0.46602848172187805, 0.2896500527858734],
+          [0.07241422683000565, 0.437477707862854, -0.2743218243122101],
+          [0.4656620919704437, -0.055531326681375504, -0.1677805334329605],
+          [-0.20989128947257996, 0.3244912922382355, 0.2904171347618103],
+          [0.46033307909965515, -0.43624934554100037, 0.27395081520080566],
+          [0.09633241593837738, 0.4812283515930176, -0.10740850865840912],
+          ...
+        ],
+        ...
+      ]
+>,
+    "dense_17_bias" => #Nx.Tensor<
+      f32[224]
+      [-0.437947154045105, -0.3123781085014343, -0.07364602386951447, -0.17842651903629303, -0.23810754716396332, -0.5842221975326538, -0.31864720582962036, -0.4883136451244354, -0.342776894569397, -0.42458009719848633, -0.037980902940034866, -0.4672001600265503, -0.29021957516670227, -0.34677910804748535, -0.12901832163333893, -0.34956464171409607, -0.24181561172008514, -0.1848868876695633, 0.14107340574264526, -0.24357864260673523, -0.5238861441612244, -0.34390661120414734, -0.5149201154708862, -0.2905629575252533, -0.4239664077758789, -0.2006053477525711, -0.6452786326408386, 0.00785798765718937, 0.01762772910296917, -0.31600648164749146, -0.6475844979286194, -0.2795366048812866, -0.314314603805542, -0.2918281853199005, -0.45064109563827515, -0.35721874237060547, -0.8386235237121582, -0.115989089012146, -0.572711706161499, -0.4273826479911804, 0.047104764729738235, ...]
+>,
+    "dense_17_kernel" => #Nx.Tensor<
+      f32[448][224]
+      [
+        [-0.06112518534064293, -0.034945305436849594, -0.09290359169244766, -0.06401459872722626, -0.10287437587976456, 0.09422516077756882, -0.1531984508037567, 0.17036505043506622, -0.0858108401298523, 0.014376009814441204, 0.04942992702126503, -0.08141803741455078, -0.200773686170578, 0.0580948144197464, 9.619204211048782e-4, -0.07350172847509384, 0.1663588285446167, 0.3436208963394165, -0.08687152713537216, 0.06988458335399628, -0.116461381316185, -0.13358521461486816, 0.07303635030984879, 0.04396055266261101, 0.01788153313100338, -0.059815481305122375, -0.2920133173465729, 0.03255588933825493, 0.28909382224082947, -0.21285240352153778, -0.3548406660556793, -0.14818280935287476, -0.11407753080129623, 0.055101651698350906, -0.2826368510723114, 0.13149738311767578, 0.02277165651321411, 0.010473266243934631, 0.09723909199237823, -0.13565070927143097, ...],
+        ...
+      ]
+>,
+    "dense_21_bias" => #Nx.Tensor<
+      f32[2]
+      [-0.1633363962173462, 0.16333632171154022]
+>,
+    "dense_21_kernel" => #Nx.Tensor<
+      f32[224][2]
+      [
+        [-0.35980290174484253, 0.10821590572595596],
+        [0.17404888570308685, -0.20845367014408112],
+        [-0.22002916038036346, 0.20137226581573486],
+        [-0.1820477396249771, 0.19517645239830017],
+        [-0.20480495691299438, 0.20452432334423065],
+        [0.3792528212070465, -0.159099742770195],
+        [-0.1397138088941574, 0.04726365953683853],
+        [0.29189273715019226, 0.004816902335733175],
+        [-0.13852712512016296, 0.2147751897573471],
+        [0.08540838211774826, -0.15355022251605988],
+        [0.12210649996995926, -0.1296231746673584],
+        [0.14900998771190643, -0.37575194239616394],
+        [0.2787993848323822, -0.2978234887123108],
+        [0.14775268733501434, -0.21852438151836395],
+        [-0.08442993462085724, 0.21264991164207458],
+        [0.09074439108371735, -0.3663216829299927],
+        [0.356128066778183, -0.17420236766338348],
+        [0.14640724658966064, -0.3391481339931488],
+        [-0.28945404291152954, 0.1541050523519516],
+        ...
+      ]
+>
+  }
+}
+```
+
+```elixir
+our_reviews = [
+  # Made up reviews - what do you think they should be?
+  # (class 0 == negative, class 1 == positive)
+  "This movie was great really enjoyed it loved it",
+  "Meh, I could take it or leave it",
+  "this movie was the worst and sucked",
+
+  # First three reviews from IMDB; should all be positive (class 1)
+  "The story centers around Barry McKenzie who must go to England if he wishes to claim his inheritance. Being about the grossest Aussie shearer ever to set foot outside this great Nation of ours there is something of a culture clash and much fun and games ensue. The songs of Barry McKenzie(Barry Crocker) are highlights.",
+  "'The Adventures Of Barry McKenzie' started life as a satirical comic strip in 'Private Eye', written by Barry Humphries and based on an idea by Peter Cook. McKenzie ( 'Bazza' to his friends ) is a lanky, loud, hat-wearing Australian whose two main interests in life are sex ( despite never having had any ) and Fosters lager. In 1972, he found his way to the big screen for the first of two outings. It must have been tempting for Humphries to cast himself as 'Bazza', but he wisely left the job to Barry Crocker ( later to sing the theme to the television soap opera 'Neighbours'! ). Humphries instead played multiple roles in true Peter Sellers fashion, most notably Bazza's overbearing Aunt 'Edna Everage' ( this was before she became a Dame ).<br /><br />You know this is not going to be 'The Importance Of Being Ernest' when its censorship classification N.P.A. stands for 'No Poofters Allowed'. Pom-hating Bazza is told by a Sydney solicitor that in order to inherit a share in his father's will he must go to England to absorb British culture. With Aunt Edna in tow, he catches a Quantas flight to Hong Kong, and then on to London. An over-efficient customs officer makes Bazza pay import duties on everything he bought over there, including a suitcase full of 'tubes of Fosters lager'. As he puts it: \"when it comes to fleecing you, the Poms have got the edge on the gyppos!\". A crafty taxi driver ( Bernard Spear ) maximises the fare by taking Bazza and Edna first to Stonehenge, then Scotland. The streets of London are filthy, and their hotel is a hovel run by a seedy landlord ( Spike Milligan ) who makes Bazza put pound notes in the electricity meter every twenty minutes. There is some good news for our hero though; he meets up with other Aussies in Earls Court, and Fosters is on sale in British pubs.<br /><br />What happens next is a series of comical escapades that take Bazza from starring in his own cigarette commercial, putting curry down his pants in the belief it is some form of aphrodisiac, a bizarre encounter with Dennis Price as an upper-class pervert who loves being spanked while wearing a schoolboy's uniform, a Young Conservative dance in Rickmansworth to a charity rock concert where his song about 'chundering' ( vomiting ) almost makes him an international star, and finally to the B.B.C. T.V. Centre where he pulls his pants down on a live talk-show hosted by the thinking man's crumpet herself, Joan Bakewell. A fire breaks out, and Bazza's friends come to the rescue - downing cans of Fosters, they urinate on the flames en masse.<br /><br />This is a far cry from Bruce Beresford's later works - 'Breaker Morant' and 'Driving Miss Daisy'. On release, it was savaged by critics for being too 'vulgar'. Well, yes, it is, but it is also great non-P.C. fun. 'Bazza' is a disgusting creation, but his zest for life is unmistakable, you cannot help but like the guy. His various euphemisms for urinating ( 'point Percy at the porcelain' ) and vomiting ( 'the Technicolour yawn' ) have passed into the English language without a lot of people knowing where they came from. Other guest stars include Dick Bentley ( as a detective who chases Bazza everywhere ), Peter Cook, Julie Covington ( later to star in 'Rock Follies' ), and even future arts presenter Russell Davies.<br /><br />A sequel - the wonderfully-named 'Barry McKenzie Holds His Own - came out two years later. At its premiere, Humphries took the opportunity to blast the critics who had savaged the first film. Good for him.<br /><br />What must have been of greater concern to him, though, was the release of 'Crocodile Dundee' in 1985. It also featured a lanky, hat-wearing Aussie struggling to come to terms with a foreign culture. And made tonnes more money.<br /><br />The song on the end credits ( performed by Snacka Fitzgibbon ) is magnificent. You have a love a lyric that includes the line: \"If you want to send your sister in a frenzy, introduce her to Barry McKenzie!\". Time to end this review. I have to go the dunny to shake hands with the unemployed...",
+  "This film and it's sequel Barry Mckenzie holds his own, are the two greatest comedies to ever be produced. A great story a young Aussie bloke travels to england to claim his inheritance and meets up with his mates, who are just as loveable and innocent as he is.<br /><br />It's chock a block full of great, sayings , where else could you find someone who needs a drink so bad that he's as dry as a dead dingoes donger? great characters, top acting, and it's got great sheilas and more Fosters consumption then any other three films put together. Top notch.<br /><br />And some of the funniest songs you'll ever hear, and it's full of great celebrities. Definitely my two favourite films of all time, I watch them at least once a fortnight."
+]
+
+vec_our_reviews =
+  our_reviews
+  |> PreprocReviews.preproc_reviews(w2v)
+```
+
+```output
+#Nx.Tensor<
+  f32[6][50][32]
+  [
+    [
+      [0.5307400226593018, 0.30823999643325806, 0.08688800036907196, -0.0265670008957386, 0.0016675000078976154, -0.5367699861526489, 0.6118299961090088, 0.26600000262260437, 0.6118299961090088, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+      [0.4011699855327606, 0.17223000526428223, -0.19415999948978424, 1.3357000350952148, -0.1637600064277649, 0.5790299773216248, -0.22071999311447144, 0.6682599782943726, -0.22071999311447144, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, ...],
+      ...
+    ],
+    ...
+  ]
+>
+```
+
+```elixir
+require Axon
+
+yhat = Axon.predict(model, final_params[:params], vec_our_reviews)
+```
+
+```output
+#Nx.Tensor<
+  f32[6][2]
+  [
+    [0.025229092687368393, 0.9747708439826965],
+    [0.36860916018486023, 0.6313908100128174],
+    [0.9994137287139893, 5.862718098796904e-4],
+    [1.3409265919861468e-9, 1.0],
+    [0.17816691100597382, 0.821833074092865],
+    [0.08915477246046066, 0.9108452796936035]
+  ]
+>
+```
+
+```elixir
+yhat |> Nx.argmax(axis: 1)
+```
+
+```output
+#Nx.Tensor<
+  s64[6]
+  [1, 1, 0, 1, 1, 1]
+>
+```

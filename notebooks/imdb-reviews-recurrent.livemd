@@ -1,0 +1,174 @@
+# IMDB Reviews Classification - Recurrent
+
+## Load deps
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.1.0-dev", github: "elixir-nx/nx", sparse: "nx", override: true},
+    {:exla, "~> 0.1.0-dev", github: "elixir-nx/nx", sparse: "exla", override: true},
+    {:axon, "~> 0.1.0-dev", github: "elixir-nx/axon", branch: "main"},
+    {:scidata, "~> 0.1.2"},
+    {:nltex, "~> 0.1.0-dev", github: "arpieb/nltex", branch: "master", override: true}
+  ]
+  # , force: true
+)
+```
+
+```elixir
+Application.put_env(:exla, :clients, default: [platform: :cuda])
+```
+
+## Retrieve IMDB movie reviews
+
+```elixir
+reviews = Scidata.IMDBReviews.download()
+```
+
+```elixir
+IO.puts(length(reviews.review))
+IO.puts(length(reviews.sentiment))
+```
+
+## Retrieve Stanford NLP's GloVe word vectors
+
+```elixir
+# w2v = NLTEx.WordVectors.GloVe.download(:glove_6b, 50, base_url: "http://localhost:8080/")
+read_w2v = fn ifs ->
+  IO.binread(ifs, :all)
+  |> :erlang.binary_to_term()
+end
+
+write_w2v = fn w2v ->
+  File.open!("/tmp/glove_6b_50d.bin.bin", [:write, :binary])
+  |> IO.binwrite(w2v |> :erlang.term_to_binary())
+  |> File.close()
+
+  w2v
+end
+
+w2v =
+  case File.open("/tmp/glove_6b_50d.bin.bin", [:read, :binary], read_w2v) do
+    {:ok, data} ->
+      data
+
+    {:error, _} ->
+      NLTEx.WordVectors.GloVe.download(:glove_6b, 50)
+      |> write_w2v.()
+  end
+```
+
+```elixir
+w2v.wordvecs |> Map.keys() |> length()
+```
+
+## Prepare review text data
+
+<!-- livebook:{"disable_formatting":true} -->
+
+```elixir
+defmodule PreprocReviews do
+  @default_defn_compiler EXLA
+  @sample_len 32
+  
+  import Nx.Defn
+
+  def preproc_reviews(reviews, w2v) do
+    reviews
+    |> Stream.map(&String.downcase/1)
+    |> Stream.map(&String.split/1)
+    |> Stream.map(fn tokens -> {tokens, length(tokens)} end)
+    |> Stream.map(fn {tokens, len} -> 
+      NLTEx.WordVectors.vectorize_tokens(tokens, w2v) 
+      |> Nx.stack() 
+      |> nx_proc(
+        lead: (if len < @sample_len, do: @sample_len - len, else: 0), 
+        trail: (if len > @sample_len, do: @sample_len - len, else: 0)
+        )
+    end)
+    |> Enum.to_list()
+    |> Nx.stack()
+    end
+
+    defn nx_proc(t, opts \\ []) do
+      t
+      |> Nx.pad(0.0, [{opts[:lead], opts[:trail], 0}, {0, 0, 0}])
+    end
+
+end
+
+num_samples = length(reviews.review)
+vec_reviews =
+  reviews.review
+  |> Stream.take(num_samples)
+  |> PreprocReviews.preproc_reviews(w2v)
+```
+
+## Prep sentiment labels
+
+```elixir
+labels =
+  reviews.sentiment
+  |> Enum.take(num_samples)
+  |> Nx.tensor(type: {:f, 32})
+  |> Nx.new_axis(-1)
+  |> Nx.equal(Nx.iota({2}))
+
+Nx.sum(labels, axes: [0])
+```
+
+## Construct Axon binary classification model and train it!
+
+```elixir
+model =
+  Axon.input({nil, 32, 50})
+  |> Axon.lstm(1, activation: :relu, unroll: :static)
+  |> elem(1)
+  |> Axon.flatten()
+  |> Axon.dense(150, activation: :relu)
+  |> Axon.dense(2, activation: :sigmoid)
+```
+
+<!-- livebook:{"disable_formatting":true} -->
+
+```elixir
+batch_size = 32
+
+train_x = vec_reviews 
+|> Nx.to_batched_list(batch_size)
+
+train_y = labels 
+|> Nx.to_batched_list(batch_size)
+
+final_params =
+  model
+  |> Axon.Training.step(:categorical_cross_entropy, Axon.Optimizers.adam(0.005), metrics: [:accuracy])
+  |> Axon.Training.train(train_x, train_y, epochs: 5, compiler: EXLA)
+```
+
+## Testing time!
+
+```elixir
+our_reviews = [
+  "This movie was great really enjoyed it loved it",
+  "Meh, I could take it or leave it",
+  "this movie was the worst and sucked",
+  "The story centers around Barry McKenzie who must go to England if he wishes to claim his inheritance. Being about the grossest Aussie shearer ever to set foot outside this great Nation of ours there is something of a culture clash and much fun and games ensue. The songs of Barry McKenzie(Barry Crocker) are highlights.",
+  "'The Adventures Of Barry McKenzie' started life as a satirical comic strip in 'Private Eye', written by Barry Humphries and based on an idea by Peter Cook. McKenzie ( 'Bazza' to his friends ) is a lanky, loud, hat-wearing Australian whose two main interests in life are sex ( despite never having had any ) and Fosters lager. In 1972, he found his way to the big screen for the first of two outings. It must have been tempting for Humphries to cast himself as 'Bazza', but he wisely left the job to Barry Crocker ( later to sing the theme to the television soap opera 'Neighbours'! ). Humphries instead played multiple roles in true Peter Sellers fashion, most notably Bazza's overbearing Aunt 'Edna Everage' ( this was before she became a Dame ).<br /><br />You know this is not going to be 'The Importance Of Being Ernest' when its censorship classification N.P.A. stands for 'No Poofters Allowed'. Pom-hating Bazza is told by a Sydney solicitor that in order to inherit a share in his father's will he must go to England to absorb British culture. With Aunt Edna in tow, he catches a Quantas flight to Hong Kong, and then on to London. An over-efficient customs officer makes Bazza pay import duties on everything he bought over there, including a suitcase full of 'tubes of Fosters lager'. As he puts it: \"when it comes to fleecing you, the Poms have got the edge on the gyppos!\". A crafty taxi driver ( Bernard Spear ) maximises the fare by taking Bazza and Edna first to Stonehenge, then Scotland. The streets of London are filthy, and their hotel is a hovel run by a seedy landlord ( Spike Milligan ) who makes Bazza put pound notes in the electricity meter every twenty minutes. There is some good news for our hero though; he meets up with other Aussies in Earls Court, and Fosters is on sale in British pubs.<br /><br />What happens next is a series of comical escapades that take Bazza from starring in his own cigarette commercial, putting curry down his pants in the belief it is some form of aphrodisiac, a bizarre encounter with Dennis Price as an upper-class pervert who loves being spanked while wearing a schoolboy's uniform, a Young Conservative dance in Rickmansworth to a charity rock concert where his song about 'chundering' ( vomiting ) almost makes him an international star, and finally to the B.B.C. T.V. Centre where he pulls his pants down on a live talk-show hosted by the thinking man's crumpet herself, Joan Bakewell. A fire breaks out, and Bazza's friends come to the rescue - downing cans of Fosters, they urinate on the flames en masse.<br /><br />This is a far cry from Bruce Beresford's later works - 'Breaker Morant' and 'Driving Miss Daisy'. On release, it was savaged by critics for being too 'vulgar'. Well, yes, it is, but it is also great non-P.C. fun. 'Bazza' is a disgusting creation, but his zest for life is unmistakable, you cannot help but like the guy. His various euphemisms for urinating ( 'point Percy at the porcelain' ) and vomiting ( 'the Technicolour yawn' ) have passed into the English language without a lot of people knowing where they came from. Other guest stars include Dick Bentley ( as a detective who chases Bazza everywhere ), Peter Cook, Julie Covington ( later to star in 'Rock Follies' ), and even future arts presenter Russell Davies.<br /><br />A sequel - the wonderfully-named 'Barry McKenzie Holds His Own - came out two years later. At its premiere, Humphries took the opportunity to blast the critics who had savaged the first film. Good for him.<br /><br />What must have been of greater concern to him, though, was the release of 'Crocodile Dundee' in 1985. It also featured a lanky, hat-wearing Aussie struggling to come to terms with a foreign culture. And made tonnes more money.<br /><br />The song on the end credits ( performed by Snacka Fitzgibbon ) is magnificent. You have a love a lyric that includes the line: \"If you want to send your sister in a frenzy, introduce her to Barry McKenzie!\". Time to end this review. I have to go the dunny to shake hands with the unemployed...",
+  "This film and it's sequel Barry Mckenzie holds his own, are the two greatest comedies to ever be produced. A great story a young Aussie bloke travels to england to claim his inheritance and meets up with his mates, who are just as loveable and innocent as he is.<br /><br />It's chock a block full of great, sayings , where else could you find someone who needs a drink so bad that he's as dry as a dead dingoes donger? great characters, top acting, and it's got great sheilas and more Fosters consumption then any other three films put together. Top notch.<br /><br />And some of the funniest songs you'll ever hear, and it's full of great celebrities. Definitely my two favourite films of all time, I watch them at least once a fortnight."
+]
+
+vec_our_reviews =
+  our_reviews
+  |> PreprocReviews.preproc_reviews(w2v)
+```
+
+```elixir
+require Axon
+
+yhat = Axon.predict(model, final_params[:params], vec_our_reviews)
+```
+
+```elixir
+yhat |> Nx.argmax(axis: 1)
+```
