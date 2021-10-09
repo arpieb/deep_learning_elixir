@@ -1,6 +1,8 @@
 # Deep Learning with Elixir: Axon, Nx and Livebook
 Demo livebook built for [Atlanta Code Camp 2021](https://www.atlantacodecamp.com/2021).
 
+[Slide deck](https://docs.google.com/presentation/d/1Ny5EkPs84g7WbGEOf1la3muQ0DQ47Aj1s3tzmx0oVA0/edit?usp=sharing)
+
 # Usage
 Note that Livebook requires Elixir 1.12 in order to use `Mix.install` which the included livebook leverages.  It has been tested on macOS (Intel) and Ubuntu 20.04 LTS; ymmv on Windows or Apple silicon.
 
