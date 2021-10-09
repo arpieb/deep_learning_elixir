@@ -7,3 +7,17 @@ Note that Livebook requires Elixir 1.12 in order to use `Mix.install` which the 
 Use one of the **Livebook** stand-up methods described in detail in the [Livebook](https://github.com/livebook-dev/livebook) repo, and open the livebook of interest under the `livebooks` folder.
 
 In the case you have installed the Escript version and need extra environment vars/config set to launch your server, there is a `run_livebook.sh` bash script included to wrap up your starting logic.
+
+## Get involved!
+
+The Elixir community is local and global, and would love for you to get involved!
+
+### Locally
+
+- [Atlanta Elixir Meetup](https://www.meetup.com/atlantaelixir/)
+- [@ElixirAtlanta](https://twitter.com/ElixirAtlanta) 
+
+### Globally
+
+- [EEF Machine Learning Working Group](https://erlef.org/wg/machine-learning)
+- [Elixir Slack](https://elixir-lang.slack.com)
