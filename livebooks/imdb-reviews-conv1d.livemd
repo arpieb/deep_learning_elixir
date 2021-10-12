@@ -26,7 +26,7 @@ Mix.install(
     # Core ecosystem components
     {:nx, "~> 0.1.0-dev", github: "elixir-nx/nx", sparse: "nx", override: true},
     {:exla, "~> 0.1.0-dev", github: "elixir-nx/nx", sparse: "exla", override: true},
-    {:axon, "~> 0.1.0-dev", github: "elixir-nx/axon", branch: "main", override: true},
+    {:axon, "~> 0.1.0-dev", github: "elixir-nx/axon", ref: "ff02898", override: true},
 
     # Dataset package
     {:scidata, "~> 0.1.2"},
@@ -140,7 +140,6 @@ defmodule TransformReviews do
     reviews
     |> Stream.map(&String.downcase/1)
     |> Stream.map(&NLTEx.Tokenizer.Simple.transform/1)
-    # |> Stream.map(fn review -> String.split(review, ~R/\W/, trim: true) end)
     |> Stream.map(fn tokens -> vectorize_review(tokens, w2v) end)
     |> Enum.to_list()
     |> Nx.stack()
